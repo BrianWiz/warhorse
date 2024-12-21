@@ -1,0 +1,17 @@
+[package]
+name = "warhorse_server"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+horse_protocol = { path = "../warhorse_protocol" }
+
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+axum = "0.7.9"
+socketioxide = "0.15.1"
+
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
