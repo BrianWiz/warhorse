@@ -2,13 +2,13 @@ use rust_socketio::client::Client;
 use rust_socketio::{ClientBuilder, Payload};
 use serde_json::json;
 use tracing::error;
-use horse_protocol::FriendsList;
+use warhorse_protocol::FriendsList;
 
-pub struct HorseClient {
+pub struct WarhorseClient {
     socket_io: Client,
 }
 
-impl HorseClient {
+impl WarhorseClient {
     pub fn new(
         connection_string: &str,
         mut on_receive_friends_list: impl FnMut(&FriendsList) + Send + 'static,
@@ -36,7 +36,7 @@ impl HorseClient {
             .connect()
             .expect("Connection failed");
 
-        HorseClient {
+        WarhorseClient {
             socket_io,
         }
     }

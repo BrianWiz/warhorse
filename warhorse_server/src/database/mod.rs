@@ -1,4 +1,4 @@
-use horse_protocol::{Friend, UserId};
+use warhorse_protocol::{Friend, UserId};
 
 use crate::data_service::User;
 

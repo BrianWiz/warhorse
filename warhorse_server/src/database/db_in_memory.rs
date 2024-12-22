@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use horse_protocol::{Friend, FriendStatus, UserId};
+use warhorse_protocol::{Friend, FriendStatus, UserId};
 
 use crate::data_service::User;
 

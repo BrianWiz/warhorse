@@ -1,6 +1,5 @@
 use std::sync::Arc;
 use std::collections::HashMap;
-use std::error::Error;
 use tokio::sync::Mutex;
 use serde_json::Value;
 use socketioxide::{
@@ -14,6 +13,7 @@ use tracing::{error, info};
 
 use crate::data_service::DataService;
 use crate::database::Database;
+use crate::error::ServerError;
 
 type SocketId = Sid;
 
@@ -64,7 +64,7 @@ where T: Database + Send + Sync + 'static
     }
 
     /// Gets the socket ID associated with a user
-    pub fn get_socket_id(&self, user_id: UserId) -> Result<SocketId, Box<dyn Error>> {
+    pub fn get_socket_id(&self, user_id: UserId) -> Result<SocketId, ServerError> {
         match self.user_sockets.get(&user_id) {
             Some(socket_id) => Ok(socket_id.clone()),
             None => Err(format!("{} is not connected", user_id))?,
@@ -80,7 +80,7 @@ where T: Database + Send + Sync + 'static
        display_name: String,
        password: String,
        socket_id: SocketId,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<(), ServerError> {
         self.data_service.create_user(
             user_id.clone(),
             account_name,
@@ -99,7 +99,7 @@ where T: Database + Send + Sync + 'static
     }
 
     /// Sends a private message to a specific user
-    pub fn send_chat_message(&self, sender_id: UserId, message: SendChatMessage) -> Result<(), Box<dyn Error>> {
+    pub fn send_chat_message(&self, sender_id: UserId, message: SendChatMessage) -> Result<(), ServerError> {
         let serialized_message = message.to_json()?;
         match message.channel {
             ChatChannel::PrivateMessage(user_id) => {
@@ -199,7 +199,11 @@ pub fn listen_for_chat_messages<T: Database + Send + Sync + 'static>(socket_ref:
     });
 }
 
-pub async fn handle_connection<T: Database + Send + Sync + 'static>(socket: SocketRef, data: Value, server: Arc<Mutex<WarhorseServer<T>>>) {
+pub async fn handle_connection<T: Database + Send + Sync + 'static>(
+    socket: SocketRef,
+    data: Value,
+    server: Arc<Mutex<WarhorseServer<T>>>
+) {
 
     info!(ns = socket.ns(), ?socket.id, "Socket.IO connected");
 

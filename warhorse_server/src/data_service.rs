@@ -1,7 +1,5 @@
-use std::{collections::HashMap, error::Error};
-use std::time::Instant;
-use horse_protocol::{Friend, FriendStatus, UserId};
-
+use warhorse_protocol::{Friend, UserId};
+use crate::error::ServerError;
 use crate::{database::Database, utils::{is_valid_email, validate_account_name, validate_display_name, validate_password}};
 
 #[derive(Clone, Debug)]
@@ -37,7 +35,7 @@ impl<T> DataService<T>
         email: String, 
         display_name: String,
         password: String
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<(), ServerError> {
 
         validate_password(&password)?;
         validate_account_name(&account_name)?;
