@@ -1,6 +1,7 @@
 use warhorse_protocol::{Friend, UserId, UserRegistration, UserPartial};
 use crate::database::Database;
 
+/// DataAccess is a struct that provides a high-level interface to the database.
 pub struct DataAccess<T>
     where T: Database
 {
