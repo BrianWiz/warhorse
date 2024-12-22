@@ -78,6 +78,12 @@ pub fn vec_to_json<T: ProtoType>(messages: Vec<T>) -> Result<Value, Error> {
         .map_err(|e| Error(e.to_string()))
 }
 
+/// Deserialize a vector of messages from JSON.
+pub fn json_to_vec<T: ProtoType>(json: Value) -> Result<Vec<T>, Error> {
+    serde_json::from_value(json)
+        .map_err(|e| Error(e.to_string()))
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum Language {
     English,

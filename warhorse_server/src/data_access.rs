@@ -1,14 +1,13 @@
 use warhorse_protocol::{Friend, UserId, UserRegistration, UserPartial};
-use crate::error::ServerError;
-use crate::{database::Database, utils::{is_valid_email, validate_account_name, validate_display_name, validate_password}};
+use crate::database::Database;
 
-pub struct DataService<T> 
+pub struct DataAccess<T>
     where T: Database
 {
     database: T,
 }
 
-impl<T> DataService<T> 
+impl<T> DataAccess<T>
     where T: Database 
 {
     pub fn new(database: T) -> Self {

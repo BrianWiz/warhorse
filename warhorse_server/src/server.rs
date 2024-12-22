@@ -11,7 +11,7 @@ use socketioxide::socket::Sid;
 use warhorse_protocol::*;
 use tracing::{error, info};
 use tracing::log::warn;
-use crate::data_service::DataService;
+use crate::data_access::DataAccess;
 use crate::database::Database;
 use crate::error::ServerError;
 use crate::utils::{is_valid_email, validate_account_name, validate_display_name, validate_password};
@@ -21,7 +21,7 @@ type SocketId = Sid;
 pub struct WarhorseServer<T>
 where T: Database + Send + Sync + 'static
 {
-    data_service: DataService<T>,
+    data_service: DataAccess<T>,
     user_sockets: HashMap<UserId, SocketId>,
     io: SocketIo,
 }
@@ -33,7 +33,7 @@ where T: Database + Send + Sync + 'static
         Self {
             io,
             user_sockets: HashMap::new(),
-            data_service: DataService::new(T::new(database_connection_string)),
+            data_service: DataAccess::new(T::new(database_connection_string)),
         }
     }
 

@@ -41,6 +41,39 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_validate_password() {
+        assert!(validate_password(&"password".to_string(), Language::English).is_ok());
+        assert!(validate_password(&"password".to_string(), Language::Spanish).is_ok());
+        assert!(validate_password(&"password".to_string(), Language::French).is_ok());
+
+        assert!(validate_password(&"pass".to_string(), Language::English).is_err());
+        assert!(validate_password(&"pass".to_string(), Language::Spanish).is_err());
+        assert!(validate_password(&"pass".to_string(), Language::French).is_err());
+    }
+
+    #[test]
+    fn test_validate_account_name() {
+        assert!(validate_account_name(&"account_name".to_string(), Language::English).is_ok());
+        assert!(validate_account_name(&"account_name".to_string(), Language::Spanish).is_ok());
+        assert!(validate_account_name(&"account_name".to_string(), Language::French).is_ok());
+
+        assert!(validate_account_name(&"ac".to_string(), Language::English).is_err());
+        assert!(validate_account_name(&"ac".to_string(), Language::Spanish).is_err());
+        assert!(validate_account_name(&"ac".to_string(), Language::French).is_err());
+    }
+
+    #[test]
+    fn test_validate_display_name() {
+        assert!(validate_display_name(&"display_name".to_string(), Language::English).is_ok());
+        assert!(validate_display_name(&"display_name".to_string(), Language::Spanish).is_ok());
+        assert!(validate_display_name(&"display_name".to_string(), Language::French).is_ok());
+
+        assert!(validate_display_name(&"dn".to_string(), Language::English).is_err());
+        assert!(validate_display_name(&"dn".to_string(), Language::Spanish).is_err());
+        assert!(validate_display_name(&"dn".to_string(), Language::French).is_err());
+    }
+
+    #[test]
     fn test_valid_emails() {
         assert!(is_valid_email(&"test@example.com".to_string()));
         assert!(is_valid_email(&"user.name+tag@example.com".to_string()));
