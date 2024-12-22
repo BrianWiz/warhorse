@@ -3,6 +3,8 @@ mod database;
 mod data_service;
 mod utils;
 mod error;
+mod i18n;
+mod config;
 
 use std::sync::Arc;
 use axum::routing::get;
@@ -21,7 +23,9 @@ async fn main() -> Result<(), ServerError> {
         .map_err(|e| ServerError(e.to_string()))?;
 
     let (layer, io) = SocketIo::new_layer();
-    let server = Arc::new(Mutex::new(WarhorseServer::<database::db_in_memory::InMemoryDatabase>::new(io)));
+    let server = Arc::new(Mutex::new(
+        WarhorseServer::<database::db_in_memory::InMemoryDatabase>::new(io, "")
+    ));
 
     let server_clone = server.clone();
     {

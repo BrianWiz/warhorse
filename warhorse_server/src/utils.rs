@@ -1,22 +1,25 @@
 use regex::Regex;
+use warhorse_protocol::Language;
+use crate::config::*;
+use crate::error::ServerError;
 
-pub fn validate_password(password: &String) -> Result<(), Box<dyn std::error::Error>> {
-    if password.len() < 8 {
-        return Err("Password must be at least 8 characters".into());
+pub fn validate_password(password: &String, language: Language) -> Result<(), ServerError> {
+    if password.len() < PASSWORD_MIN_LENGTH {
+        return Err(crate::i18n::invalid_password(language));
     }
     Ok(())
 }
 
-pub fn validate_account_name(username: &String) -> Result<(), Box<dyn std::error::Error>> {
-    if username.len() < 3  || username.len() > 20 {
-        return Err("Username must be between 3 and 20 characters".into());
+pub fn validate_account_name(account_name: &String, language: Language) -> Result<(), ServerError> {
+    if account_name.len() < ACCOUNT_NAME_MIN_LENGTH || account_name.len() > ACCOUNT_NAME_MAX_LENGTH {
+        return Err(crate::i18n::invalid_account_name(language));
     }
     Ok(())
 }
 
-pub fn validate_display_name(display_name: &String) -> Result<(), Box<dyn std::error::Error>> {
-    if display_name.len() < 3  || display_name.len() > 20 {
-        return Err("Display name must be between 3 and 20 characters".into());
+pub fn validate_display_name(display_name: &String, language: Language) -> Result<(), ServerError> {
+    if display_name.len() < DISPLAY_NAME_MIN_LENGTH  || display_name.len() > DISPLAY_NAME_MAX_LENGTH {
+        return Err(crate::i18n::invalid_display_name(language));
     }
     Ok(())
 }

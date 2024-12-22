@@ -23,33 +23,30 @@ where T: Database + Send + Sync + 'static
     data_service: DataService<T>,
     user_sockets: HashMap<UserId, SocketId>,
     io: SocketIo,
-
-    // temp until we have an actual database connected
-    temp_next_user_id: usize,
 }
 
 impl<T> WarhorseServer<T>
 where T: Database + Send + Sync + 'static
 {
-    pub fn new(io: SocketIo) -> Self {
+    pub fn new(io: SocketIo, database_connection_string: &str) -> Self {
         Self {
             io,
             user_sockets: HashMap::new(),
-            temp_next_user_id: 0,
-            data_service: DataService::new(T::new()),
+            data_service: DataService::new(T::new(database_connection_string)),
         }
     }
 
+    /// Gets the Socket.IO instance
     pub fn io(&self) -> &SocketIo {
         &self.io
     }
 
     /// Gets the online status of a user
-    fn get_online_status(&self, user_id: UserId) -> FriendStatus {
+    fn get_online_status(&self, user_id: UserId) -> FriendOnlineStatus {
         if self.user_sockets.contains_key(&user_id) {
-            FriendStatus::Online
+            FriendOnlineStatus::Online
         } else {
-            FriendStatus::Offline
+            FriendOnlineStatus::Offline
         }
     }
 
@@ -71,24 +68,36 @@ where T: Database + Send + Sync + 'static
         }
     }
 
-    /// Registers a user's socket
+    /// Logs in a user
+    pub async fn login_user(
+        &mut self,
+        req: UserLogin,
+        socket_id: SocketId
+    ) -> Result<(), ServerError> {
+        let user = match req.identity {
+            LoginUserIdentity::AccountName(account_name) => {
+                self.data_service.users_get_by_account_name(&account_name)
+            },
+            LoginUserIdentity::Email(email) => {
+                self.data_service.users_get_by_email(&email)
+            },
+        };
+
+        if let Some(user) = user {
+            self.user_sockets.insert(user.id, socket_id);
+            Ok(())
+        } else {
+            Err(crate::i18n::invalid_login(req.language))?
+        }
+    }
+
+    /// Registers a new user and logs them in
     pub async fn register_user(
         &mut self,
-       user_id: UserId,
-       account_name: String,
-       email: String,
-       display_name: String,
-       password: String,
-       socket_id: SocketId,
+        req: UserRegistration,
+        socket_id: SocketId
     ) -> Result<(), ServerError> {
-        self.data_service.create_user(
-            user_id.clone(),
-            account_name,
-            email,
-            display_name,
-            password,
-        )?;
-
+        let user_id = self.data_service.create_user(req)?;
         self.user_sockets.insert(user_id, socket_id);
         Ok(())
     }
@@ -157,21 +166,13 @@ where T: Database + Send + Sync + 'static
         })
     }
 
-    /// Gets the friends list for a user
-    pub fn get_friends_list(&self, user_id: String) -> FriendsList {
-        // Temp until we have an actual database connected
-        FriendsList::from(vec![
-            Friend {
-                id: "1".to_string(),
-                display_name: "John".to_string(),
-                status: self.get_online_status("1".to_string()),
-            },
-            Friend {
-                id: "2".to_string(),
-                display_name: "Jane".to_string(),
-                status: self.get_online_status("2".to_string()),
-            },
-        ])
+    /// Gets the friends list of a user and their online status
+    pub fn get_friends_list(&self, user_id: UserId) -> Vec<Friend> {
+        let mut friends_list = self.data_service.friends_get(user_id);
+        for friend in friends_list.iter_mut() {
+            friend.status = self.get_online_status(friend.id.clone());
+        }
+        friends_list
     }
 }
 
@@ -188,13 +189,82 @@ pub fn listen_for_chat_messages<T: Database + Send + Sync + 'static>(socket_ref:
                         },
                         None => {
                             error!(ns = socket.ns(), ?socket.id, "Failed to get user ID");
+                            socket.disconnect().ok();
                         }
                     }
                 },
                 Err(e) => {
                     error!(ns = socket.ns(), ?socket.id, ?e, "Failed to parse chat message");
+                    socket.disconnect().ok();
                 }
             };
+        }
+    });
+}
+
+pub fn listen_for_user_login<T: Database + Send + Sync + 'static>(
+    socket_ref: &SocketRef,
+    server: Arc<Mutex<WarhorseServer<T>>>
+) {
+    socket_ref.on("auth-login", move |socket: SocketRef, Data::<Value>(data)| {
+        async move {
+            match UserLogin::from_json(data) {
+                Ok(data) => {
+                    match server.lock().await.login_user(data, socket.id).await {
+                        Ok(_) => {
+                            info!(ns = socket.ns(), ?socket.id, "User logged in");
+                        },
+                        Err(e) => {
+                            error!(ns = socket.ns(), ?socket.id, ?e, "Failed to log in user");
+                            socket.disconnect().ok();
+                        }
+                    }
+                },
+                Err(e) => {
+                    error!(ns = socket.ns(), ?socket.id, ?e, "Failed to parse login data");
+                    socket.disconnect().ok();
+                }
+            }
+        }
+    });
+}
+
+pub fn listen_for_user_registration<T: Database + Send + Sync + 'static>(
+    socket_ref: &SocketRef,
+    server: Arc<Mutex<WarhorseServer<T>>>
+) {
+    socket_ref.on("auth-register", move |socket: SocketRef, Data::<Value>(data)| {
+        async move {
+            match UserRegistration::from_json(data) {
+                Ok(data) => {
+                    match server.lock().await.register_user(data, socket.id).await {
+                        Ok(_) => {
+                            info!(ns = socket.ns(), ?socket.id, "User registered");
+                        },
+                        Err(e) => {
+                            error!(ns = socket.ns(), ?socket.id, ?e, "Failed to register user");
+                        }
+                    }
+                },
+                Err(e) => {
+                    error!(ns = socket.ns(), ?socket.id, ?e, "Failed to parse registration data");
+                }
+            }
+        }
+    });
+}
+
+pub fn handle_user_disconnect<T: Database + Send + Sync + 'static>(
+    socket: SocketRef,
+    user_id: UserId,
+    server: Arc<Mutex<WarhorseServer<T>>>
+) {
+    let server_clone = server.clone();
+    socket.on_disconnect(move || {
+        let server = server_clone.clone();
+        let user_id = user_id.clone();
+        async move {
+            server.lock().await.remove_user(&user_id).await;
         }
     });
 }
@@ -206,82 +276,8 @@ pub async fn handle_connection<T: Database + Send + Sync + 'static>(
 ) {
 
     info!(ns = socket.ns(), ?socket.id, "Socket.IO connected");
-
-    let user_id = if let Some(user_id) = data.get("user_id").and_then(|v| v.as_str()) {
-        user_id.to_string()
-    } else {
-        error!(ns = socket.ns(), ?socket.id, "No user ID provided. Cannot auth.");
-        return;
-    };
-
-    let password = if let Some(password) = data.get("password").and_then(|v| v.as_str()) {
-        password.to_string()
-    } else {
-        error!(ns = socket.ns(), ?socket.id, "No password provided. Cannot auth.");
-        return;
-    };
-
-    let account_name = if let Some(account_name) = data.get("account_name").and_then(|v| v.as_str()) {
-        account_name.to_string()
-    } else {
-        error!(ns = socket.ns(), ?socket.id, "No account name provided. Cannot auth.");
-        return;
-    };
-
-    let email = if let Some(email) = data.get("email").and_then(|v| v.as_str()) {
-        email.to_string()
-    } else {
-        error!(ns = socket.ns(), ?socket.id, "No email provided. Cannot auth.");
-        return;
-    };
-
-    let display_name = if let Some(display_name) = data.get("display_name").and_then(|v| v.as_str()) {
-        display_name.to_string()
-    } else {
-        error!(ns = socket.ns(), ?socket.id, "No display name provided. Cannot auth.");
-        return;
-    };
-
-    let user_registration_error = server.lock().await.data_service.create_user(
-        user_id.clone(),
-        account_name.clone(),
-        email.clone(),
-        display_name.clone(),
-        password.clone(),
-    );
-
-    match user_registration_error {
-        Ok(()) => {
-            info!(ns = socket.ns(), ?socket.id, "Registered user");
-            socket.emit("auth", &data).ok();
-        },
-        Err(e) => {
-            info!(ns = socket.ns(), ?socket.id, ?e, "Failed to register");
-            if let Ok(json) = LoginResponse::Failure(e.to_string()).to_json() {
-                socket.emit("auth-error", &json).ok();
-            } else {
-                error!(ns = socket.ns(), ?socket.id, "Failed to serialize auth error");
-            }
-            let _= socket.disconnect();
-            return;
-        }
-    }
-
-    if let Ok(serialized_message) = server.lock().await.get_friends_list(user_id.clone()).to_json() {
-        socket.emit("friends-list", &serialized_message.to_string()).ok();
-    } else {
-        error!(ns = socket.ns(), ?socket.id, "Failed to serialize friends list");
-    }
-
+    socket.emit("hello", &crate::i18n::hello_message(Language::English)).ok();
+    listen_for_user_login(&socket, server.clone());
+    listen_for_user_registration(&socket, server.clone());
     listen_for_chat_messages(&socket, server.clone());
-
-    // Handle disconnection
-    let server_clone = server.clone();
-    socket.on_disconnect(move || {
-        let server = server_clone.clone();
-        let user_id = user_id.clone();
-        async move {
-            server.lock().await.remove_user(&user_id).await;
-        }
-    });
 }
