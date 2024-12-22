@@ -1,5 +1,5 @@
 use tracing_subscriber::FmtSubscriber;
-use horse_client::HorseClient;
+use warhorse_client::HorseClient;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

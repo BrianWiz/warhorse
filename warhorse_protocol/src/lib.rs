@@ -5,6 +5,33 @@ pub type UserId = String;
 pub type RoomId = String;
 
 //==================================================================================================
+// AUTH
+//==================================================================================================
+#[derive(Debug, Serialize, Deserialize)]
+pub struct RegisterUser {
+    pub account_name: String,
+    pub email: String,
+    pub display_name: String,
+    pub password: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub enum LoginResponse {
+    Success(UserId),
+    Failure(String),
+}
+
+impl LoginResponse {
+    pub fn to_json(&self) -> Result<Value, serde_json::Error> {
+        serde_json::to_value(self)
+    }
+
+    pub fn from_json(json: Value) -> Result<Self, serde_json::Error> {
+        serde_json::from_value(json)
+    }
+}
+
+//==================================================================================================
 // FRIENDS
 //==================================================================================================
 

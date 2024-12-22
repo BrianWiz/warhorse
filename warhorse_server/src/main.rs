@@ -1,4 +1,10 @@
+mod data_service;
+mod database;
+mod utils;
+
 use std::sync::Arc;
+use data_service::DataService;
+use database::{db_in_memory::InMemoryDatabase, Database};
 use tokio::sync::{Mutex, RwLock};
 use std::collections::HashMap;
 use std::error::Error;
@@ -14,10 +20,12 @@ use horse_protocol::*;
 use tracing::{error, info};
 use tracing_subscriber::FmtSubscriber;
 
-type UserId = String;
 type SocketId = Sid;
 
-pub struct HorseServer {
+pub struct HorseServer<T>
+    where T: Database + Send + Sync + 'static
+{
+    data_service: DataService<T>,
     user_sockets: HashMap<UserId, SocketId>,
     io: SocketIo,
 
@@ -25,13 +33,15 @@ pub struct HorseServer {
     temp_next_user_id: usize,
 }
 
-impl HorseServer {
-
+impl<T> HorseServer<T>
+    where T: Database + Send + Sync + 'static
+{
     pub fn new(io: SocketIo) -> Self {
         Self {
             io,
             user_sockets: HashMap::new(),
             temp_next_user_id: 0,
+            data_service: DataService::new(T::new()),
         }
     }
 
@@ -63,8 +73,24 @@ impl HorseServer {
     }
 
     /// Registers a user's socket
-    pub async fn register_user(&mut self, user_id: UserId, socket_id: SocketId) {
+    pub async fn register_user(&mut self, 
+        user_id: UserId,
+        account_name: String,
+        email: String,
+        display_name: String,
+        password: String,
+        socket_id: SocketId,
+    ) -> Result<(), Box<dyn Error>> {
+        self.data_service.create_user(
+            user_id.clone(),
+            account_name,
+            email,
+            display_name,
+            password,
+        )?;
+
         self.user_sockets.insert(user_id, socket_id);
+        Ok(())
     }
 
     /// Removes a user's socket
@@ -149,7 +175,7 @@ impl HorseServer {
     }
 }
 
-pub fn listen_for_chat_messages(socket_ref: &SocketRef, server: Arc<Mutex<HorseServer>>) {
+pub fn listen_for_chat_messages<T: Database + Send + Sync + 'static>(socket_ref: &SocketRef, server: Arc<Mutex<HorseServer<T>>>) {
     socket_ref.on("chat-message", move |socket: SocketRef, Data::<Value>(data)| {
         async move {
             match SendChatMessage::from_json(data) {
@@ -178,14 +204,15 @@ async fn main() -> Result<(), Box<dyn Error>> {
     tracing::subscriber::set_global_default(FmtSubscriber::default())?;
 
     let (layer, io) = SocketIo::new_layer();
-    let horse_server = Arc::new(Mutex::new(HorseServer::new(io)));
+    let horse_server = Arc::new(Mutex::new(HorseServer::<InMemoryDatabase>::new(io)));
 
     let horse_server_clone = horse_server.clone();
-    horse_server.lock().await.io.ns("/", move |socket: SocketRef, data: Data<Value>| {
+    horse_server_clone.lock().await.io.ns("/", move |socket: SocketRef, Data::<Value>(data)| {
         async move {
-            handle_connection(socket, data.0, horse_server_clone).await;
+            handle_connection(socket, data, horse_server_clone.clone()).await;
         }
     });
+
 
     let app = axum::Router::new()
         .route("/", get(|| async { "Hello, World!" }))
@@ -199,27 +226,72 @@ async fn main() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-async fn handle_connection(socket: SocketRef, data: Value, server: Arc<Mutex<HorseServer>>) {
+async fn handle_connection<T: Database + Send + Sync + 'static>(socket: SocketRef, data: Value, server: Arc<Mutex<HorseServer<T>>>) {
 
     info!(ns = socket.ns(), ?socket.id, "Socket.IO connected");
 
-    let socket_id = socket.id;
+    let user_id = if let Some(user_id) = data.get("user_id").and_then(|v| v.as_str()) {
+        user_id.to_string()
+    } else {
+        error!(ns = socket.ns(), ?socket.id, "No user ID provided. Cannot auth.");
+        return;
+    };
 
-    // Temp until we have an actual database connected
-    let user_id = server.lock().await.temp_next_user_id.to_string();
-    server.lock().await.temp_next_user_id += 1;
+    let password = if let Some(password) = data.get("password").and_then(|v| v.as_str()) {
+        password.to_string()
+    } else {
+        error!(ns = socket.ns(), ?socket.id, "No password provided. Cannot auth.");
+        return;
+    };
 
-    let server_clone = server.clone();
-    let user_id_clone = user_id.clone();
-    tokio::spawn(async move {
-        server_clone.lock().await.register_user(user_id_clone, socket_id).await;
-    });
+    let account_name = if let Some(account_name) = data.get("account_name").and_then(|v| v.as_str()) {
+        account_name.to_string()
+    } else {
+        error!(ns = socket.ns(), ?socket.id, "No account name provided. Cannot auth.");
+        return;
+    };
 
-    socket.emit("auth", &data).ok();
+    let email = if let Some(email) = data.get("email").and_then(|v| v.as_str()) {
+        email.to_string()
+    } else {
+        error!(ns = socket.ns(), ?socket.id, "No email provided. Cannot auth.");
+        return;
+    };
+
+    let display_name = if let Some(display_name) = data.get("display_name").and_then(|v| v.as_str()) {
+        display_name.to_string()
+    } else {
+        error!(ns = socket.ns(), ?socket.id, "No display name provided. Cannot auth.");
+        return;
+    };
+
+    let user_registration_error = server.lock().await.data_service.create_user(
+        user_id.clone(),
+        account_name.clone(),
+        email.clone(),
+        display_name.clone(),
+        password.clone(),
+    );
+
+    match user_registration_error {
+        Ok(()) => {
+            info!(ns = socket.ns(), ?socket.id, "Registered user");
+            socket.emit("auth", &data).ok();
+        },
+        Err(e) => {
+            info!(ns = socket.ns(), ?socket.id, ?e, "Failed to register");
+            if let Ok(json) = LoginResponse::Failure(e.to_string()).to_json() {
+                socket.emit("auth-error", &json).ok();
+            } else {
+                error!(ns = socket.ns(), ?socket.id, "Failed to serialize auth error");
+            }
+            socket.disconnect();
+            return;
+        }
+    }
 
     if let Ok(serialized_message) = server.lock().await.get_friends_list(user_id.clone()).to_json() {
-        info!(ns = socket.ns(), ?socket.id, "Sending friends list");
-        socket.emit("friends-list", &serialized_message).ok();
+        socket.emit("friends-list", &serialized_message.to_string()).ok();
     } else {
         error!(ns = socket.ns(), ?socket.id, "Failed to serialize friends list");
     }
