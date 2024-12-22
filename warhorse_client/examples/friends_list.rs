@@ -1,16 +1,17 @@
 use std::sync::mpsc;
 use std::thread;
+use rust_socketio::Socket;
 use tokio::runtime::Runtime;
 use tracing::{error, info};
 use tracing_subscriber::FmtSubscriber;
 use warhorse_client::error::ClientError;
-use warhorse_client::WarhorseClient;
-use warhorse_protocol::{Friend, RequestError, UserPartial, UserRegistration};
+use warhorse_client::{WarhorseClient, WarhorseClientCommands};
+use warhorse_protocol::{Friend, Language, RequestError, UserPartial, UserRegistration};
 
 fn main() -> Result<(), ClientError> {
     tracing::subscriber::set_global_default(FmtSubscriber::default())?;
 
-    let language = warhorse_protocol::Language::English;
+    let language = Language::English;
 
     // Create channels for shutdown signal
     let (tx, rx) = mpsc::channel();
@@ -21,10 +22,10 @@ fn main() -> Result<(), ClientError> {
         tx_clone.send(()).ok();
     }).ok();
 
-    // Initialize client in the main thread
-    let client = WarhorseClient::new(
+    let _ = WarhorseClient::new(
         language,
         "http://localhost:3000",
+        on_receive_hello,
          on_receive_request_error,
         on_receive_friends_list,
         on_receive_blocked_list,
@@ -32,41 +33,23 @@ fn main() -> Result<(), ClientError> {
         on_receive_friend_request_accepted,
     );
 
-    // Spawn a separate thread for async operations if needed
-    let _async_handle = thread::spawn(|| {
-        let rt = Runtime::new().unwrap();
-        rt.block_on(async {
-            // Your async operations here
-            loop {
-                tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
-                // Do something periodically...
-            }
-        });
-    });
-
-    // Debug: Wait for the client to connect
-    thread::sleep(std::time::Duration::from_secs(2));
-
-    // Send registration request
-    if let Err(e) = client.send_user_registration_request(UserRegistration {
-        language: language.clone(),
-        account_name: "test".to_string(),
-        password: "test123456".to_string(),
-        email: "test@example.com".to_string(),
-        display_name: "SomeDisplayName".to_string(),
-    }) {
-        error!("Failed to send user registration request: {:?}", e);
-    } else {
-        info!("User registration request sent.");
-    }
-
     info!("Client is running. Press Ctrl+C to exit.");
 
     // Wait for shutdown signal
     rx.recv().unwrap_or(());
-
     info!("Shutting down...");
     Ok(())
+}
+
+fn on_receive_hello(client: &mut WarhorseClientCommands, language: Language) {
+    info!("Received hello from server");
+    client.user_registration = Some(UserRegistration {
+        language,
+        account_name: "test".to_string(),
+        password: "test123456".to_string(),
+        email: "test@example.com".to_string(),
+        display_name: "SomeDisplayName".to_string(),
+    });
 }
 
 fn on_receive_request_error(error_message: RequestError) {

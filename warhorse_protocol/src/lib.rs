@@ -15,7 +15,12 @@ pub const DISPLAY_NAME_MAX_LENGTH: usize = 20;
 pub const DISPLAY_NAME_MIN_LENGTH: usize = 3;
 pub const PASSWORD_MIN_LENGTH: usize = 8;
 
-// Socket.IO Events, named from the client's perspective.
+/// Socket.IO Events, named from the client's perspective.
+
+/// Event for getting connection approval from the server.
+pub const EVENT_RECEIVE_HELLO: &str = "hello";
+
+/// Event for sending a user login to the server.
 pub const EVENT_SEND_USER_LOGIN: &str = "/user/login";
 
 /// Event for sending a user register to the server.

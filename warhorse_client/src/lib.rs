@@ -1,10 +1,16 @@
 pub mod error;
 
 use rust_socketio::client::Client;
-use rust_socketio::{ClientBuilder, Payload};
+use rust_socketio::{ClientBuilder, Payload, Socket};
 use tracing::{error, info};
 use warhorse_protocol::*;
 use crate::error::ClientError;
+
+pub struct WarhorseClientCommands {
+    pub user_login: Option<UserLogin>,
+    pub user_registration: Option<UserRegistration>,
+    pub friend_request: Option<FriendRequest>,
+}
 
 pub struct WarhorseClient {
     language: Language,
@@ -15,16 +21,34 @@ impl WarhorseClient {
     pub fn new(
         language: Language,
         connection_string: &str,
+        mut on_receive_hello: impl FnMut(&mut WarhorseClientCommands, Language) + Send + 'static,
         mut on_receive_error: impl FnMut(RequestError) + Send + 'static,
         mut on_receive_friends_list: impl FnMut(&Vec<Friend>) + Send + 'static,
         mut on_receive_blocked_list: impl FnMut(&Vec<UserPartial>) + Send + 'static,
         mut on_receive_friend_requests: impl FnMut(&Vec<Friend>) + Send + 'static,
         mut on_receive_friend_request_accepted: impl FnMut(&Friend) + Send + 'static,
     ) -> Self {
+        let language = language.clone();
         let socket_io = ClientBuilder::new(connection_string)
             .namespace("/")
             .on(EVENT_RECEIVE_USER_LOGIN, move |payload, _socket| {
                 info!("Authenticated: {:?}", payload);
+            })
+            .on(EVENT_RECEIVE_HELLO, move |payload, socket| {
+                match payload {
+                    Payload::Text(text) => {
+                        let mut commands = WarhorseClientCommands {
+                            user_login: None,
+                            user_registration: None,
+                            friend_request: None,
+                        };
+                        on_receive_hello(&mut commands, language.clone());
+                        process_commands(commands, socket);
+                    }
+                    _ => {
+                        error!("Unexpected payload: {:?}", payload);
+                    }
+                }
             })
             .on(EVENT_RECEIVE_ERROR, move |payload, _socket| {
                 match payload {
@@ -131,5 +155,46 @@ impl WarhorseClient {
             return Err(ClientError(e.to_string()));
         }
         Ok(())
+    }
+}
+
+fn process_commands(commands: WarhorseClientCommands, socket: Socket) {
+    if let Some(user_login) = commands.user_login {
+        match user_login.to_json() {
+            Ok(json) => {
+                if let Err(e) = socket.emit(EVENT_SEND_USER_LOGIN, json) {
+                    error!("Failed to send user login request: {:?}", e);
+                }
+            }
+            Err(e) => {
+                error!("Failed to serialize user login request: {:?}", e);
+            }
+        }
+    }
+
+    if let Some(user_registration) = commands.user_registration {
+        match user_registration.to_json() {
+            Ok(json) => {
+                if let Err(e) = socket.emit(EVENT_SEND_USER_REGISTER, json) {
+                    error!("Failed to send user registration request: {:?}", e);
+                }
+            }
+            Err(e) => {
+                error!("Failed to serialize user registration request: {:?}", e);
+            }
+        }
+    }
+
+    if let Some(friend_request) = commands.friend_request {
+        match friend_request.to_json() {
+            Ok(json) => {
+                if let Err(e) = socket.emit(EVENT_SEND_FRIEND_REQUEST, json) {
+                    error!("Failed to send friend request: {:?}", e);
+                }
+            }
+            Err(e) => {
+                error!("Failed to serialize friend request: {:?}", e);
+            }
+        }
     }
 }
