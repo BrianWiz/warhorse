@@ -1,7 +1,4 @@
 use std::sync::mpsc;
-use std::thread;
-use rust_socketio::Socket;
-use tokio::runtime::Runtime;
 use tracing::{error, info};
 use tracing_subscriber::FmtSubscriber;
 use warhorse_client::error::ClientError;
