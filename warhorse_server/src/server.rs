@@ -197,19 +197,18 @@ where T: Database + Send + Sync + 'static
             return Err(crate::i18n::user_is_blocked(req.language));
         }
 
-        let friend = self.data_service.users_get(req.friend_id.clone());
-        if let Some(friend) = friend {
+        if self.data_service.user_exists(req.friend_id.clone()) {
             self.data_service.friend_requests_insert(sender_id.clone(), req.friend_id.clone());
             let friend_socket_id = self.get_socket_id(req.friend_id.clone())?;
             if let Some(socket) = self.get_socket(friend_socket_id) {
-                let friend = Friend {
-                    id: friend.id.clone(),
-                    display_name: friend.display_name.clone(),
-                    status: self.get_online_status(friend.id.clone()),
-                };
-                let friend_request_accepted = FriendRequestAccepted { friend };
-                let serialized_friend_request_accepted = friend_request_accepted.to_json()?;
-                socket.emit(EVENT_RECEIVE_FRIEND_REQUESTS, &serialized_friend_request_accepted)?;
+
+                // Send the updated friend requests list to the user who received the friend request
+                let friend_requests = self.data_service.friend_requests_get(req.friend_id.clone());
+                socket.emit(EVENT_RECEIVE_FRIEND_REQUESTS, &vec_to_json(friend_requests)?)?;
+
+                // Send the updated friends list to the user who sent the friend request,
+                // because now they'll have friends with pending request as their status.
+                self.send_friend_list(sender_id);
             }
         } else {
             Err(format!("{} does not exist", req.friend_id))?
@@ -246,13 +245,13 @@ where T: Database + Send + Sync + 'static
                 };
                 let friend_request_accepted = FriendRequestAccepted { friend };
                 let serialized_friend_request_accepted = friend_request_accepted.to_json()?;
-                socket.emit("friend-request-accepted", &serialized_friend_request_accepted)?;
+                socket.emit(EVENT_RECEIVE_FRIEND_REQUEST_ACCEPTED, &serialized_friend_request_accepted)?;
+
+                // refresh the friends list for both users
+                self.send_friend_list(user_id);
+                self.send_friend_list(req.friend_id);
             }
         }
-
-        // refresh the friends list for both users
-        self.send_friend_list(user_id);
-        self.send_friend_list(req.friend_id);
 
         Ok(())
     }
@@ -388,7 +387,10 @@ where T: Database + Send + Sync + 'static
     fn get_friends_list(&self, user_id: UserId) -> Vec<Friend> {
         let mut friends_list = self.data_service.friends_get(user_id);
         for friend in friends_list.iter_mut() {
-            friend.status = self.get_online_status(friend.id.clone());
+            // if they're not a pending friend request, we want to include their online status
+            if matches!(friend.status, FriendStatus::PendingRequest) {
+                friend.status = self.get_online_status(friend.id.clone());
+            }
         }
         friends_list
     }

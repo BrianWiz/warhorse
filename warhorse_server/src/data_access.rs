@@ -1,4 +1,4 @@
-use warhorse_protocol::{Friend, UserId, UserRegistration, UserPartial};
+use warhorse_protocol::{Friend, UserId, UserRegistration, UserPartial, FriendStatus};
 use crate::database::Database;
 
 /// DataAccess is a struct that provides a high-level interface to the database.
@@ -17,12 +17,22 @@ impl<T> DataAccess<T>
         }
     }
 
+    pub fn user_exists(&self, user_id: UserId) -> bool {
+        self.database.user_exists(user_id)
+    }
+
     pub fn users_insert(&mut self, user: UserRegistration) -> UserId {
         self.database.users_insert(user)
     }
 
     pub fn friends_get(&self, user_id: UserId) -> Vec<Friend> {
-        self.database.friends_get(user_id)
+        let friends = self.database.friends_get(user_id.clone());
+
+        // we also want to include pending friend requests
+        let friend_requests = self.database.friend_requests_get(user_id);
+
+        // combine
+        friends.iter().chain(friend_requests.iter()).cloned().collect()
     }
 
     pub fn friends_add(&mut self, user_id: UserId, friend_id: UserId) {
@@ -39,6 +49,14 @@ impl<T> DataAccess<T>
 
     pub fn friend_requests_remove(&mut self, user_id: UserId, friend_id: UserId) {
         self.database.friend_requests_remove(user_id, friend_id);
+    }
+
+    pub fn friend_requests_get(&self, user_id: UserId) -> Vec<Friend> {
+        let mut friend_requests = self.database.friend_requests_get(user_id);
+        friend_requests.iter_mut().for_each(|friend| {
+            friend.status = FriendStatus::PendingRequest;
+        });
+        friend_requests
     }
 
     pub fn users_get(&self, user_id: UserId) -> Option<UserPartial> {

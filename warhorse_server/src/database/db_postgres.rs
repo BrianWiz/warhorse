@@ -10,6 +10,10 @@ impl Database for PostgresDatabase {
         unimplemented!();
     }
 
+    fn user_exists(&self, user_id: UserId) -> bool {
+        unimplemented!();
+    }
+
     fn users_insert(&mut self, user: UserRegistration) -> UserId {
         unimplemented!();
     }
@@ -47,6 +51,10 @@ impl Database for PostgresDatabase {
     }
 
     fn friend_requests_remove(&mut self, user_id: UserId, friend_id: UserId) {
+        unimplemented!();
+    }
+
+    fn friend_requests_get(&self, user_id: UserId) -> Vec<Friend> {
         unimplemented!();
     }
 

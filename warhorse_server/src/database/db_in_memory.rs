@@ -24,6 +24,10 @@ impl Database for InMemoryDatabase {
         }
     }
 
+    fn user_exists(&self, user_id: UserId) -> bool {
+        self.users.contains_key(&user_id)
+    }
+
     fn users_insert(&mut self, user: UserRegistration) -> UserId {
         let new_user_id = self.next_user_id.to_string();
         self.next_user_id += 1;
@@ -100,6 +104,19 @@ impl Database for InMemoryDatabase {
         if let Some(friend_requests) = self.friend_requests.get_mut(&user_id) {
             friend_requests.retain(|id| id != &friend_id);
         }
+    }
+
+    fn friend_requests_get(&self, user_id: UserId) -> Vec<Friend> {
+        self.friend_requests.get(&user_id).cloned().unwrap_or_default()
+            .iter()
+            .filter_map(|id| {
+                self.users_get(id.clone()).map(|user| Friend {
+                    id: user.id,
+                    display_name: user.display_name,
+                    status: FriendStatus::PendingRequest,
+                })
+            })
+            .collect()
     }
 
     fn friends_add(&mut self, user_id: UserId, friend_id: UserId) {

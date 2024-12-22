@@ -45,6 +45,15 @@ pub const EVENT_SEND_FRIEND_REMOVE: &str = "/friend/remove";
 /// Event for sending a chat message to the server.
 pub const EVENT_SEND_CHAT_MESSAGE: &str = "/chat/send";
 
+/// Event for receiving a successful user login response, received from the server.
+pub const EVENT_RECEIVE_USER_LOGIN: &str = "/user/login";
+
+/// Event for receiving a user registration validation error, received from the server.
+pub const EVENT_RECEIVE_USER_REGISTER_ERROR: &str = "/user/register/error";
+
+/// Event for receiving a user login validation error, received from the server.
+pub const EVENT_RECEIVE_USER_LOGIN_ERROR: &str = "/user/login/error";
+
 /// Event for receiving your friend list, received from the server.
 pub const EVENT_RECEIVE_FRIENDS: &str = "/friends/receive";
 
@@ -53,6 +62,9 @@ pub const EVENT_RECEIVE_BLOCKED_USERS: &str = "/blocked_users/receive";
 
 /// Event for receiving a friend request, invoked by a user, but ultimately received from the server.
 pub const EVENT_RECEIVE_FRIEND_REQUESTS: &str = "/friend_requests/receive";
+
+/// Event for receiving a friend request response, received from the server.
+pub const EVENT_RECEIVE_FRIEND_REQUEST_ACCEPTED: &str = "/friend_request/accepted";
 
 /// Event for receiving a chat message, invoked by a user, but ultimately received from the server.
 pub const EVENT_RECEIVE_CHAT_MESSAGE: &str = "/chat/receive";
@@ -150,7 +162,7 @@ pub enum LoginResponse {
 impl ProtoType for LoginResponse {}
 
 /// The online status of a friend
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum FriendStatus {
     Online,
     Offline,
@@ -158,7 +170,7 @@ pub enum FriendStatus {
 }
 
 /// A friend of a user
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Friend {
     pub id: String,
     pub display_name: String,
