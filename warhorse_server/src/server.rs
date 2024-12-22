@@ -139,7 +139,22 @@ where T: Database + Send + Sync + 'static
     fn send_post_login_data(&self, user_id: UserId) {
         self.send_friend_list(user_id.clone());
         self.send_block_list(user_id.clone());
-        self.send_friend_requests(user_id);
+        self.send_friend_requests(user_id.clone());
+        self.send_post_login_event(user_id);
+    }
+
+    /// Sends a post login event
+    fn send_post_login_event(&self, user_id: UserId) {
+        match self.get_socket_id(user_id) {
+            Ok(socket_id) => {
+                if let Some(socket) = self.get_socket(socket_id) {
+                    let _= socket.emit(EVENT_RECEIVE_USER_LOGIN, &serde_json::json!({}));
+                }
+            },
+            Err(e) => {
+                info!(?e, "Failed to get socket ID");
+            }
+        }
     }
 
     /// Sends a private message to a specific user
@@ -192,7 +207,7 @@ where T: Database + Send + Sync + 'static
                         }
                     },
                     Err(e) => {
-                        error!(?e, "Failed to get socket ID");
+                        info!(?e, "Failed to get socket ID");
                     }
                 }
             },
@@ -220,19 +235,15 @@ where T: Database + Send + Sync + 'static
 
         if self.data_service.user_exists(req.friend_id.clone()) {
             self.data_service.friend_requests_insert(sender_id.clone(), req.friend_id.clone());
-            let friend_socket_id = self.get_socket_id(req.friend_id.clone())?;
-            if let Some(socket) = self.get_socket(friend_socket_id) {
 
-                // Send the updated friend requests list to the user who received the friend request
-                let friend_requests = self.data_service.friend_requests_get(req.friend_id.clone());
-                socket.emit(EVENT_RECEIVE_FRIEND_REQUESTS, &vec_to_json(friend_requests)?)?;
+            // send a friend request to the target user
+            self.send_friend_requests(req.friend_id.clone());
 
-                // Send the updated friends list to the user who sent the friend request,
-                // because now they'll have friends with pending request as their status.
-                self.send_friend_list(sender_id);
-            }
+            // refresh the friends list for the sender
+            self.send_friend_list(sender_id);
         } else {
-            Err(format!("{} does not exist", req.friend_id))?
+            error!("User does not exist: {}", req.friend_id);
+            return Err(format!("{} does not exist", req.friend_id))?;
         }
 
         Ok(())
@@ -357,7 +368,7 @@ where T: Database + Send + Sync + 'static
                         }
                     },
                     Err(e) => {
-                        error!(?e, "Failed to get socket ID");
+                        info!(?e, "Failed to get socket ID");
                     }
                 }
             },
@@ -377,7 +388,7 @@ where T: Database + Send + Sync + 'static
                         }
                     },
                     Err(e) => {
-                        error!(?e, "Failed to get socket ID");
+                        info!(?e, "Failed to get socket ID");
                     }
                 }
             },
@@ -525,23 +536,30 @@ fn listen_for_friend_requests<T: Database + Send + Sync + 'static>(
     socket_ref: &SocketRef,
     server: Arc<Mutex<WarhorseServer<T>>>
 ) {
+    info!("Setting up friend request listener");
     socket_ref.on(EVENT_SEND_FRIEND_REQUEST, move |socket: SocketRef, Data::<Value>(data)| {
         async move {
+            info!("Received friend request data: {:?}", data);
             match FriendRequest::from_json(data) {
                 Ok(data) => {
-                    match server.lock().await.get_logged_in_user_id(socket.id) {
+                    info!("Parsed friend request: {:?}", data);
+                    let mut server = server.lock().await;
+                    match server.get_logged_in_user_id(socket.id) {
                         Some(sender_id) => {
-                            if let Err(e) = server.lock().await.send_friend_request(sender_id, data) {
-                                error!(ns = socket.ns(), ?socket.id, ?e, "Failed to send friend request");
+                            info!("Found sender ID: {}", sender_id);
+                            if let Err(e) = server.send_friend_request(sender_id, data) {
+                                info!(ns = socket.ns(), ?socket.id, ?e, "Failed to send friend request");
+                            } else {
+                                info!("Friend request processed successfully");
                             }
                         },
                         None => {
-                            error!(ns = socket.ns(), ?socket.id, "Failed to get user ID");
+                            error!(ns = socket.ns(), ?socket.id, "Failed to get user ID - user might not be logged in");
                         }
                     }
                 }
                 Err(e) => {
-                    error!(ns = socket.ns(), ?socket.id, ?e, "Failed to parse friend request");
+                    error!(ns = socket.ns(), ?socket.id, ?e, "Failed to parse friend request data");
                 }
             }
         }

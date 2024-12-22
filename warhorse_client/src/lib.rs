@@ -22,6 +22,7 @@ impl WarhorseClient {
         language: Language,
         connection_string: &str,
         mut on_receive_hello: impl FnMut(&mut WarhorseClientCommands, Language) + Send + 'static,
+        mut on_receive_login_success: impl FnMut(&mut WarhorseClientCommands, Language) + Send + 'static,
         mut on_receive_error: impl FnMut(RequestError) + Send + 'static,
         mut on_receive_friends_list: impl FnMut(&Vec<Friend>) + Send + 'static,
         mut on_receive_blocked_list: impl FnMut(&Vec<UserPartial>) + Send + 'static,
@@ -31,8 +32,14 @@ impl WarhorseClient {
         let language = language.clone();
         let socket_io = ClientBuilder::new(connection_string)
             .namespace("/")
-            .on(EVENT_RECEIVE_USER_LOGIN, move |payload, _socket| {
-                info!("Authenticated: {:?}", payload);
+            .on(EVENT_RECEIVE_USER_LOGIN, move |_payload, socket| {
+                let mut commands = WarhorseClientCommands {
+                    user_login: None,
+                    user_registration: None,
+                    friend_request: None,
+                };
+                on_receive_login_success(&mut commands, language.clone());
+                process_commands(commands, socket);
             })
             .on(EVENT_RECEIVE_HELLO, move |payload, socket| {
                 match payload {
@@ -185,6 +192,7 @@ impl WarhorseClient {
 
 fn process_commands(commands: WarhorseClientCommands, socket: Socket) {
     if let Some(user_login) = commands.user_login {
+        info!("Sending user login request");
         match user_login.to_json() {
             Ok(json) => {
                 if let Err(e) = socket.emit(EVENT_SEND_USER_LOGIN, json) {
@@ -198,6 +206,7 @@ fn process_commands(commands: WarhorseClientCommands, socket: Socket) {
     }
 
     if let Some(user_registration) = commands.user_registration {
+        info!("Sending user registration request");
         match user_registration.to_json() {
             Ok(json) => {
                 if let Err(e) = socket.emit(EVENT_SEND_USER_REGISTER, json) {
@@ -211,6 +220,7 @@ fn process_commands(commands: WarhorseClientCommands, socket: Socket) {
     }
 
     if let Some(friend_request) = commands.friend_request {
+        info!("Sending friend request to: {}", friend_request.friend_id);
         match friend_request.to_json() {
             Ok(json) => {
                 if let Err(e) = socket.emit(EVENT_SEND_FRIEND_REQUEST, json) {

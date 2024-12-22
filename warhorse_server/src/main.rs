@@ -42,6 +42,7 @@ async fn main() -> Result<(), ServerError> {
     // add fake user data
     {
         let mut server = server.lock().await;
+
         server.register_user(
             UserRegistration {
                 account_name: "test".to_string(),
@@ -52,6 +53,8 @@ async fn main() -> Result<(), ServerError> {
             },
         None
         ).await?;
+        info!("Run example with `cargo run --example friends_list -- --account-name test`");
+
         server.register_user(
             UserRegistration {
                 account_name: "test2".to_string(),
@@ -62,6 +65,8 @@ async fn main() -> Result<(), ServerError> {
             },
             None
         ).await?;
+        info!("Run example with `cargo run --example friends_list -- --account-name test2`");
+
         server.register_user(
             UserRegistration {
                 account_name: "test3".to_string(),
@@ -72,6 +77,7 @@ async fn main() -> Result<(), ServerError> {
             },
             None
         ).await?;
+        info!("Run example with `cargo run --example friends_list -- --account-name test3`");
     }
 
     let app = axum::Router::new()

@@ -4,7 +4,7 @@ use tracing::{error, info};
 use tracing_subscriber::FmtSubscriber;
 use warhorse_client::error::ClientError;
 use warhorse_client::{WarhorseClient, WarhorseClientCommands};
-use warhorse_protocol::{Friend, Language, LoginUserIdentity, RequestError, UserLogin, UserPartial, UserRegistration};
+use warhorse_protocol::{Friend, FriendRequest, Language, LoginUserIdentity, RequestError, UserLogin, UserPartial, UserRegistration};
 
 #[derive(clap::Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -31,6 +31,7 @@ fn main() -> Result<(), ClientError> {
         language,
         "http://localhost:3000",
         on_receive_hello,
+        on_receive_login_success,
         on_receive_request_error,
         on_receive_friends_list,
         on_receive_blocked_list,
@@ -55,10 +56,28 @@ fn on_receive_hello(client: &mut WarhorseClientCommands, language: Language) {
     let password = "password".into();
 
     client.user_login = Some(UserLogin {
-        identity: LoginUserIdentity::AccountName(args.account_name),
+        identity: LoginUserIdentity::AccountName(args.account_name.clone()),
         password,
         language,
     });
+}
+
+fn on_receive_login_success(client: &mut WarhorseClientCommands, language: Language) {
+    match Args::parse().account_name.as_str() {
+        "test" => {
+            client.friend_request = Some(FriendRequest {
+                language,
+                friend_id: "1".into(),
+            });
+        }
+        "test2" => {
+            client.friend_request = Some(FriendRequest {
+                language,
+                friend_id: "0".into(),
+            });
+        }
+        _ => {}
+    }
 }
 
 fn on_receive_request_error(error_message: RequestError) {
