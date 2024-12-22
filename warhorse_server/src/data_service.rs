@@ -54,6 +54,14 @@ impl<T> DataService<T>
         self.database.friends_remove(user_id, friend_id);
     }
 
+    pub fn friend_requests_insert(&mut self, user_id: UserId, friend_id: UserId) {
+        self.database.friend_requests_insert(user_id, friend_id);
+    }
+
+    pub fn friend_requests_remove(&mut self, user_id: UserId, friend_id: UserId) {
+        self.database.friend_requests_remove(user_id, friend_id);
+    }
+
     pub fn users_get(&self, user_id: UserId) -> Option<UserPartial> {
         self.database.users_get(user_id)
     }
@@ -64,5 +72,13 @@ impl<T> DataService<T>
 
     pub fn users_get_by_email(&self, email: &str) -> Option<UserPartial> {
         self.database.users_get_by_email(email)
+    }
+
+    pub fn user_blocks_insert(&mut self, user_id: UserId, blocked_id: UserId) {
+        self.database.user_blocks_insert(user_id, blocked_id);
+    }
+    
+    pub fn user_blocks_remove(&mut self, user_id: UserId, blocked_id: UserId) {
+        self.database.user_blocks_remove(user_id, blocked_id);
     }
 }

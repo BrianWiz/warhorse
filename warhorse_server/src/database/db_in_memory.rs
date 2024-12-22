@@ -62,7 +62,7 @@ impl Database for InMemoryDatabase {
         }).cloned()
     }
 
-    fn friend_requests_add(&mut self, user_id: UserId, friend_id: UserId) {
+    fn friend_requests_insert(&mut self, user_id: UserId, friend_id: UserId) {
         if let Some(friend_requests) = self.friend_requests.get_mut(&user_id) {
             friend_requests.push(friend_id);
         } else {

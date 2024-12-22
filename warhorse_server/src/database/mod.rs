@@ -11,9 +11,11 @@ pub trait Database {
     fn users_get(&self, user_id: UserId) -> Option<UserPartial>;
     fn users_get_by_account_name(&self, account_name: &str) -> Option<UserPartial>;
     fn users_get_by_email(&self, email: &str) -> Option<UserPartial>;
+    fn user_blocks_insert(&mut self, user_id: UserId, blocked_id: UserId);
+    fn user_blocks_remove(&mut self, user_id: UserId, blocked_id: UserId);
 
     // Friends
-    fn friend_requests_add(&mut self, user_id: UserId, friend_id: UserId);
+    fn friend_requests_insert(&mut self, user_id: UserId, friend_id: UserId);
     fn friend_requests_remove(&mut self, user_id: UserId, friend_id: UserId);
     fn friends_add(&mut self, user_id: UserId, friend_id: UserId);
     fn friends_remove(&mut self, user_id: UserId, friend_id: UserId);

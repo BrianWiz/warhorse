@@ -1,4 +1,4 @@
-use warhorse_protocol::Language;
+use warhorse_protocol::{Language, UserId};
 use crate::config::*;
 use crate::error::ServerError;
 
@@ -63,5 +63,13 @@ pub fn invalid_display_name(lang: Language) -> ServerError {
         Language::English => format!("Display names must be between {} and {} characters long", DISPLAY_NAME_MIN_LENGTH, DISPLAY_NAME_MAX_LENGTH).into(),
         Language::Spanish => format!("Los nombres de visualización deben tener entre {} y {} caracteres", DISPLAY_NAME_MIN_LENGTH, DISPLAY_NAME_MAX_LENGTH).into(),
         Language::French => format!("Les noms d'affichage doivent comporter entre {} et {} caractères", DISPLAY_NAME_MIN_LENGTH, DISPLAY_NAME_MAX_LENGTH).into(),
+    }
+}
+
+pub fn already_friends(lang: Language) -> ServerError {
+    match lang {
+        Language::English => "You are already friends".into(),
+        Language::Spanish => "Ya son amigos".into(),
+        Language::French => "Vous êtes déjà amis".into(),
     }
 }

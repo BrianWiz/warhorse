@@ -74,7 +74,7 @@ where T: Database + Send + Sync + 'static
         req: UserLogin,
         socket_id: SocketId
     ) -> Result<(), ServerError> {
-        let user = match req.identity {
+        let user_partial = match req.identity {
             LoginUserIdentity::AccountName(account_name) => {
                 self.data_service.users_get_by_account_name(&account_name)
             },
@@ -83,7 +83,10 @@ where T: Database + Send + Sync + 'static
             },
         };
 
-        if let Some(user) = user {
+        if let Some(user) = user_partial {
+            // @todo: do actual authentication here
+
+            // register the user's socket
             self.user_sockets.insert(user.id, socket_id);
             Ok(())
         } else {
@@ -133,6 +136,82 @@ where T: Database + Send + Sync + 'static
             }
         }
 
+        Ok(())
+    }
+
+    pub fn send_friend_request(&mut self, sender_id: UserId, req: FriendRequest) -> Result<(), ServerError> {
+        if self.are_friends(sender_id.clone(), req.friend_id.clone()) {
+            info!("{} is already friends with {}", sender_id, req.friend_id);
+            Err(crate::i18n::already_friends(req.language))?;
+        }
+
+        let friend = self.data_service.users_get(req.friend_id.clone());
+        if let Some(friend) = friend {
+            self.data_service.friend_requests_insert(sender_id.clone(), req.friend_id.clone());
+            let friend_socket_id = self.get_socket_id(req.friend_id.clone())?;
+            if let Some(socket) = self.get_socket(friend_socket_id) {
+                let friend = Friend {
+                    id: friend.id.clone(),
+                    display_name: friend.display_name.clone(),
+                    status: self.get_online_status(friend.id.clone()),
+                };
+                let friend_request_accepted = FriendRequestAccepted { friend };
+                let serialized_friend_request_accepted = friend_request_accepted.to_json()?;
+                socket.emit("friend-request", &serialized_friend_request_accepted)?;
+            }
+        } else {
+            Err(format!("{} does not exist", req.friend_id))?
+        }
+
+        Ok(())
+    }
+
+    pub fn accept_friend_request(&mut self, user_id: UserId, req: AcceptFriendRequest) -> Result<(), ServerError> {
+        if self.are_friends(user_id.clone(), req.friend_id.clone()) {
+            info!("{} is already friends with {}", user_id, req.friend_id);
+            Err(crate::i18n::already_friends(req.language))?;
+        }
+
+        self.data_service.friends_add(user_id.clone(), req.friend_id.clone());
+        let user_socket_id = self.get_socket_id(user_id.clone())?;
+        if let Some(socket) = self.get_socket(user_socket_id) {
+            let user = self.data_service.users_get(req.friend_id.clone());
+            if let Some(user) = user {
+                let friend = Friend {
+                    id: user.id.clone(),
+                    display_name: user.display_name.clone(),
+                    status: self.get_online_status(user.id.clone()),
+                };
+                let friend_request_accepted = FriendRequestAccepted { friend };
+                let serialized_friend_request_accepted = friend_request_accepted.to_json()?;
+                socket.emit("friend-request-accepted", &serialized_friend_request_accepted)?;
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Rejects a friend request
+    pub fn reject_friend_request(&mut self, user_id: UserId, req: RejectFriendRequest) -> Result<(), ServerError> {
+        self.data_service.friend_requests_remove(user_id, req.friend_id);
+        Ok(())
+    }
+
+    /// Removes a friend
+    pub fn remove_friend(&mut self, user_id: UserId, req: RemoveFriendRequest) -> Result<(), ServerError> {
+        self.data_service.friends_remove(user_id, req.friend_id);
+        Ok(())
+    }
+
+    /// Blocks a user
+    pub fn block_user(&mut self, user_id: UserId, req: BlockUserRequest) -> Result<(), ServerError> {
+        self.data_service.user_blocks_insert(user_id, req.user_id);
+        Ok(())
+    }
+
+    /// Unblocks a user
+    pub fn unblock_user(&mut self, user_id: UserId, req: UnblockUserRequest) -> Result<(), ServerError> {
+        self.data_service.user_blocks_remove(user_id, req.user_id);
         Ok(())
     }
 
@@ -272,6 +351,33 @@ pub fn listen_for_user_registration<T: Database + Send + Sync + 'static>(
     });
 }
 
+pub fn listen_for_friend_requests<T: Database + Send + Sync + 'static>(
+    socket_ref: &SocketRef,
+    server: Arc<Mutex<WarhorseServer<T>>>
+) {
+    socket_ref.on("friend-request", move |socket: SocketRef, Data::<Value>(data)| {
+        async move {
+            match FriendRequest::from_json(data) {
+                Ok(data) => {
+                    match server.lock().await.get_logged_in_user_id(socket.id) {
+                        Some(sender_id) => {
+                            if let Err(e) = server.lock().await.send_friend_request(sender_id, data) {
+                                error!(ns = socket.ns(), ?socket.id, ?e, "Failed to send friend request");
+                            }
+                        },
+                        None => {
+                            error!(ns = socket.ns(), ?socket.id, "Failed to get user ID");
+                        }
+                    }
+                }
+                Err(e) => {
+                    error!(ns = socket.ns(), ?socket.id, ?e, "Failed to parse friend request");
+                }
+            }
+        }
+    });
+}
+
 pub fn handle_user_disconnect<T: Database + Send + Sync + 'static>(
     socket: SocketRef,
     user_id: UserId,
@@ -298,4 +404,5 @@ pub async fn handle_connection<T: Database + Send + Sync + 'static>(
     listen_for_user_login(&socket, server.clone());
     listen_for_user_registration(&socket, server.clone());
     listen_for_chat_messages(&socket, server.clone());
+    listen_for_friend_requests(&socket, server.clone());
 }
