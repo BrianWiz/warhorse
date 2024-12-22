@@ -1,310 +1,279 @@
-mod data_service;
-mod database;
-mod utils;
-
-use std::sync::Arc;
-use data_service::DataService;
-use database::{db_in_memory::InMemoryDatabase, Database};
-use tokio::sync::{Mutex, RwLock};
+use tonic::{transport::Server, Request, Response, Status};
+use tokio::sync::{mpsc, RwLock};
+use tracing::info;
 use std::collections::HashMap;
-use std::error::Error;
-use axum::routing::get;
-use serde_json::Value;
-use socketioxide::{
-    extract::{Data, SocketRef},
-    SocketIo,
+use std::sync::Arc;
+use chrono::Utc;
+
+type UserId = String;
+type ChannelId = String;
+
+use warhorse_protocol::online::{
+    online_service_server::{OnlineService, OnlineServiceServer},
+    RequestResponse,
+    ConnectRequest, ChatMessage, ChannelChatMessageRequest, PrivateChatMessageRequest,
+    JoinChannelRequest, LeaveChannelRequest, ChannelList, MyChannelsRequest, ChannelUsersRequest, UserList, User,
 };
-use socketioxide::operators::BroadcastOperators;
-use socketioxide::socket::Sid;
-use horse_protocol::*;
-use tracing::{error, info};
-use tracing_subscriber::FmtSubscriber;
 
-type SocketId = Sid;
-
-pub struct HorseServer<T>
-    where T: Database + Send + Sync + 'static
-{
-    data_service: DataService<T>,
-    user_sockets: HashMap<UserId, SocketId>,
-    io: SocketIo,
-
-    // temp until we have an actual database connected
-    temp_next_user_id: usize,
+#[derive(Debug)]
+struct OnlineServer {
+    connections: Arc<RwLock<HashMap<UserId, Connection>>>,
+    channels: Arc<RwLock<HashMap<ChannelId, Vec<UserId>>>>,
 }
 
-impl<T> HorseServer<T>
-    where T: Database + Send + Sync + 'static
-{
-    pub fn new(io: SocketIo) -> Self {
-        Self {
-            io,
-            user_sockets: HashMap::new(),
-            temp_next_user_id: 0,
-            data_service: DataService::new(T::new()),
-        }
+#[derive(Debug)]
+struct Connection {
+    tx: mpsc::Sender<Result<ChatMessage, Status>>,
+    display_name: String,
+}
+
+impl OnlineServer {
+    async fn new() -> Self {
+        let out = Self {
+            connections: Arc::new(RwLock::new(HashMap::new())),
+            channels: Arc::new(RwLock::new(HashMap::new())),
+        };
+
+        out.create_channel("general".into()).await;
+        out
     }
 
-    /// Gets the online status of a user
-    fn get_online_status(&self, user_id: UserId) -> FriendStatus {
-        if self.user_sockets.contains_key(&user_id) {
-            FriendStatus::Online
-        } else {
-            FriendStatus::Offline
-        }
+    async fn create_channel(&self, channel_id: String) {
+        let mut channels = self.channels.write().await;
+        channels.insert(channel_id, Vec::new());
     }
 
-    /// Gets a room by its ID
-    pub fn get_room(&self, room_id: RoomId) -> BroadcastOperators {
-        self.io.to(room_id)
+    async fn register_user(&self, user_id: String, display_name: String, tx: mpsc::Sender<Result<ChatMessage, Status>>) {
+        let mut connections = self.connections.write().await;
+        connections.insert(user_id, Connection { tx, display_name });
     }
 
-    /// Gets a socket by its ID
-    pub fn get_socket(&self, socket_id: SocketId) -> Option<SocketRef> {
-        self.io.get_socket(socket_id)
-    }
-
-    /// Gets the socket ID associated with a user
-    pub fn get_socket_id(&self, user_id: UserId) -> Result<SocketId, Box<dyn Error>> {
-        match self.user_sockets.get(&user_id) {
-            Some(socket_id) => Ok(socket_id.clone()),
-            None => Err(format!("{} is not connected", user_id))?,
-        }
-    }
-
-    /// Registers a user's socket
-    pub async fn register_user(&mut self, 
-        user_id: UserId,
-        account_name: String,
-        email: String,
-        display_name: String,
-        password: String,
-        socket_id: SocketId,
-    ) -> Result<(), Box<dyn Error>> {
-        self.data_service.create_user(
-            user_id.clone(),
-            account_name,
-            email,
-            display_name,
-            password,
-        )?;
-
-        self.user_sockets.insert(user_id, socket_id);
-        Ok(())
-    }
-
-    /// Removes a user's socket
-    pub async fn remove_user(&mut self, user_id: &str) {
-        self.user_sockets.remove(user_id);
-    }
-
-    /// Sends a private message to a specific user
-    pub fn send_chat_message(&self, sender_id: UserId, message: SendChatMessage) -> Result<(), Box<dyn Error>> {
-        let serialized_message = message.to_json()?;
-        match message.channel {
-            ChatChannel::PrivateMessage(user_id) => {
-                if self.are_friends(sender_id.clone(), user_id.clone()) {
-                    let socket_id = self.get_socket_id(user_id.clone())?;
-                    if let Some(socket) = self.get_socket(socket_id) {
-                        socket.emit("chat-message", &serialized_message)?;
-                    } else {
-                        Err(format!("{} is not connected", user_id))?;
-                    }
-                } else {
-                    Err(format!("{} is not friends with {}", sender_id, user_id))?;
-                }
-            },
-            ChatChannel::Room(room_id) => {
-                if self.user_in_room(sender_id.clone(), room_id.clone()) {
-                    self.get_room(room_id)
-                        .emit("chat-message", &serialized_message)?;
-                } else {
-                    Err(format!("{} is not in room {}", sender_id, room_id))?;
-                }
+    async fn handle_deregistering_user(&self, user_id: String) {
+        let user_id = user_id.clone();
+        let connections = self.connections.clone();
+        let channels = self.channels.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+            let mut connections = connections.write().await;
+            let mut channels = channels.write().await;
+            connections.remove(&user_id);
+            for (channel_id, users) in channels.iter_mut() {
+                users.retain(|id| id != &user_id);
+                info!("User {} removed from channel {}", user_id, channel_id);
             }
-        }
-
-        Ok(())
-    }
-
-    /// Whether two users are friends
-    fn are_friends(&self, user_id: UserId, friend_id: UserId) -> bool {
-        true // Temp until we have an actual database connected
-    }
-
-    /// Whether a user is in a room
-    fn user_in_room(&self, user_id: UserId, room_id: RoomId) -> bool {
-        if self.room_exists(room_id) {
-            true // Temp until we have an actual database connected
-        } else {
-            false
-        }
-    }
-
-    /// Whether a room exists
-    fn room_exists(&self, room_id: RoomId) -> bool {
-        true // Temp until we have an actual database connected
-    }
-
-    /// Gets the user ID of the logged in user associated with a socket
-    pub fn get_logged_in_user_id(&self, socket_id: SocketId) -> Option<UserId> {
-        self.user_sockets.iter().find_map(|(user_id, id)| {
-            if id == &socket_id {
-                Some(user_id.clone())
-            } else {
-                None
-            }
-        })
-    }
-
-    /// Gets the friends list for a user
-    pub fn get_friends_list(&self, user_id: String) -> FriendsList {
-        // Temp until we have an actual database connected
-        FriendsList::from(vec![
-            Friend {
-                id: "1".to_string(),
-                display_name: "John".to_string(),
-                status: self.get_online_status("1".to_string()),
-            },
-            Friend {
-                id: "2".to_string(),
-                display_name: "Jane".to_string(),
-                status: self.get_online_status("2".to_string()),
-            },
-        ])
+            info!("User disconnected: {}", user_id);
+        });
     }
 }
 
-pub fn listen_for_chat_messages<T: Database + Send + Sync + 'static>(socket_ref: &SocketRef, server: Arc<Mutex<HorseServer<T>>>) {
-    socket_ref.on("chat-message", move |socket: SocketRef, Data::<Value>(data)| {
-        async move {
-            match SendChatMessage::from_json(data) {
-                Ok(data) => {
-                    match server.lock().await.get_logged_in_user_id(socket.id) {
-                        Some(sender_id) => {
-                            if let Err(e) = server.lock().await.send_chat_message(sender_id, data) {
-                                error!(ns = socket.ns(), ?socket.id, ?e, "Failed to send chat message");
-                            }
-                        },
-                        None => {
-                            error!(ns = socket.ns(), ?socket.id, "Failed to get user ID");
-                        }
-                    }
-                },
-                Err(e) => {
-                    error!(ns = socket.ns(), ?socket.id, ?e, "Failed to parse chat message");
-                }
+#[tonic::async_trait]
+impl OnlineService for OnlineServer {
+    type StreamMessagesStream = tokio_stream::wrappers::ReceiverStream<Result<ChatMessage, Status>>;
+
+    async fn stream_messages(
+        &self,
+        request: Request<ConnectRequest>,
+    ) -> Result<Response<Self::StreamMessagesStream>, Status> {
+        let req = request.into_inner();
+        let user_id = req.user_id;
+        let display_name = req.display_name;
+
+        info!("New connection from user: {} ({})", display_name, user_id);
+
+        let (tx, rx) = mpsc::channel(32);
+        
+        self.register_user(user_id.clone(), display_name.clone(), tx).await;
+        self.handle_deregistering_user(user_id.clone()).await;
+
+        Ok(Response::new(tokio_stream::wrappers::ReceiverStream::new(rx)))
+    }
+
+    async fn send_channel_chat_message(
+        &self,
+        request: Request<ChannelChatMessageRequest>,
+    ) -> Result<Response<RequestResponse>, Status> {
+        let msg = request.into_inner();
+        let connections = self.connections.read().await;
+        let channels = self.channels.read().await;
+
+        if let Some(users) = channels.get(&msg.channel_id) {
+            let message = ChatMessage {
+                from_user_id: msg.from_user_id,
+                from_display_name: msg.from_display_name,
+                is_private: false,
+                channel_id: msg.channel_id,
+                content: msg.content,
+                timestamp: Utc::now().timestamp(),
             };
+
+            for user_id in users {
+                if let Some(connection) = connections.get(user_id) {
+                    connection.tx.send(Ok(message.clone())).await.map_err(|_| {
+                        Status::internal("Failed to send message")
+                    })?;
+                }
+            }
+
+            Ok(Response::new(RequestResponse {
+                success: true,
+                error: String::new(),
+            }))
+        } else {
+            Ok(Response::new(RequestResponse {
+                success: false,
+                error: "Channel not found".into(),
+            }))
         }
-    });
+    }
+
+    async fn send_private_chat_message(
+        &self,
+        request: Request<PrivateChatMessageRequest>,
+    ) -> Result<Response<RequestResponse>, Status> {
+        let msg = request.into_inner();
+        let connections = self.connections.read().await;
+        
+        if let Some(sender) = connections.get(&msg.to_user_id) {
+            if let Some(from_user) = connections.get(&msg.from_user_id) {
+                let message = ChatMessage {
+                    from_user_id: msg.from_user_id,
+                    from_display_name: from_user.display_name.clone(),
+                    is_private: true,
+                    channel_id: String::new(),
+                    content: msg.content,
+                    timestamp: Utc::now().timestamp(),
+                };
+
+                sender.tx.send(Ok(message)).await.map_err(|_| {
+                    Status::internal("Failed to send message")
+                })?;
+
+                Ok(Response::new(RequestResponse {
+                    success: true,
+                    error: String::new(),
+                }))
+            } else {
+                Ok(Response::new(RequestResponse {
+                    success: false,
+                    error: "Sender not found".into(),
+                }))
+            }
+        } else {
+            Ok(Response::new(RequestResponse {
+                success: false,
+                error: "Recipient not found".into(),
+            }))
+        }
+    }
+
+    async fn join_channel(
+        &self,
+        request: Request<JoinChannelRequest>,
+    ) -> Result<Response<RequestResponse>, Status> {
+        let msg = request.into_inner();
+        let mut channels = self.channels.write().await;
+        if let Some(users) = channels.get_mut(&msg.channel_id) {
+            users.push(msg.user_id.clone());
+            info!("User {} joined channel {}", msg.user_id, msg.channel_id);
+            Ok(Response::new(RequestResponse {
+                success: true,
+                error: String::new(),
+            }))
+        } else {
+            Ok(Response::new(RequestResponse {
+                success: false,
+                error: "Channel not found".into(),
+            }))
+        }
+    }
+
+    async fn leave_channel(
+        &self,
+        request: Request<LeaveChannelRequest>,
+    ) -> Result<Response<RequestResponse>, Status> {
+        let msg = request.into_inner();
+        let mut channels = self.channels.write().await;
+        if let Some(users) = channels.get_mut(&msg.channel_id) {
+            users.retain(|id| id != &msg.user_id);
+            info!("User {} left channel {}", msg.user_id, msg.channel_id);
+            Ok(Response::new(RequestResponse {
+                success: true,
+                error: String::new(),
+            }))
+        } else {
+            Ok(Response::new(RequestResponse {
+                success: false,
+                error: "Channel not found".into(),
+            }))
+        }
+    }
+
+    async fn list_channels(
+        &self,
+        _request: Request<()>,
+    ) -> Result<Response<ChannelList>, Status> {
+        let channels = self.channels.read().await;
+        let mut channel_list = ChannelList { channels: Vec::new() };
+        for channel_id in channels.keys() {
+            channel_list.channels.push(channel_id.clone());
+        }
+        Ok(Response::new(channel_list))
+    }
+
+    async fn list_my_channels(
+        &self,
+        request: Request<MyChannelsRequest>,
+    ) -> Result<Response<ChannelList>, Status> {
+        let msg = request.into_inner();
+        let channels = self.channels.read().await;
+        let mut channel_list = ChannelList { channels: Vec::new() };
+        for (channel_id, users) in channels.iter() {
+            if users.contains(&msg.user_id) {
+                channel_list.channels.push(channel_id.clone());
+            }
+        }
+        Ok(Response::new(channel_list))
+    }
+
+    async fn list_channel_users(
+        &self,
+        request: Request<ChannelUsersRequest>,
+    ) -> Result<Response<UserList>, Status> {
+        let msg = request.into_inner();
+        let channels = self.channels.read().await;
+        if let Some(users) = channels.get(&msg.channel_id) {
+            let connections = self.connections.read().await;
+            let mut user_list = UserList { users: Vec::new() };
+            for user_id in users {
+                if let Some(connection) = connections.get(user_id) {
+                    user_list.users.push(User {
+                        user_id: user_id.clone(),
+                        display_name: connection.display_name.clone(),
+                    });
+                }
+            }
+            Ok(Response::new(user_list))
+        } else {
+            Ok(Response::new(UserList { users: Vec::new() }))
+        }
+    }
 }
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn Error>> {
-    tracing::subscriber::set_global_default(FmtSubscriber::default())?;
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
-    let (layer, io) = SocketIo::new_layer();
-    let horse_server = Arc::new(Mutex::new(HorseServer::<InMemoryDatabase>::new(io)));
+    tracing_subscriber::fmt::init();
+    
+    let addr = "[::1]:50051".parse()?;
+    let online_server = OnlineServer::new().await;
+    let online_service_server = OnlineServiceServer::new(online_server);
 
-    let horse_server_clone = horse_server.clone();
-    horse_server_clone.lock().await.io.ns("/", move |socket: SocketRef, Data::<Value>(data)| {
-        async move {
-            handle_connection(socket, data, horse_server_clone.clone()).await;
-        }
-    });
+    info!("Chat server listening on {}", addr);
 
-
-    let app = axum::Router::new()
-        .route("/", get(|| async { "Hello, World!" }))
-        .layer(layer);
-
-    info!("Starting server");
-
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
-    axum::serve(listener, app).await.unwrap();
+    Server::builder()
+        .add_service(online_service_server)
+        .serve(addr)
+        .await?;
 
     Ok(())
-}
-
-async fn handle_connection<T: Database + Send + Sync + 'static>(socket: SocketRef, data: Value, server: Arc<Mutex<HorseServer<T>>>) {
-
-    info!(ns = socket.ns(), ?socket.id, "Socket.IO connected");
-
-    let user_id = if let Some(user_id) = data.get("user_id").and_then(|v| v.as_str()) {
-        user_id.to_string()
-    } else {
-        error!(ns = socket.ns(), ?socket.id, "No user ID provided. Cannot auth.");
-        return;
-    };
-
-    let password = if let Some(password) = data.get("password").and_then(|v| v.as_str()) {
-        password.to_string()
-    } else {
-        error!(ns = socket.ns(), ?socket.id, "No password provided. Cannot auth.");
-        return;
-    };
-
-    let account_name = if let Some(account_name) = data.get("account_name").and_then(|v| v.as_str()) {
-        account_name.to_string()
-    } else {
-        error!(ns = socket.ns(), ?socket.id, "No account name provided. Cannot auth.");
-        return;
-    };
-
-    let email = if let Some(email) = data.get("email").and_then(|v| v.as_str()) {
-        email.to_string()
-    } else {
-        error!(ns = socket.ns(), ?socket.id, "No email provided. Cannot auth.");
-        return;
-    };
-
-    let display_name = if let Some(display_name) = data.get("display_name").and_then(|v| v.as_str()) {
-        display_name.to_string()
-    } else {
-        error!(ns = socket.ns(), ?socket.id, "No display name provided. Cannot auth.");
-        return;
-    };
-
-    let user_registration_error = server.lock().await.data_service.create_user(
-        user_id.clone(),
-        account_name.clone(),
-        email.clone(),
-        display_name.clone(),
-        password.clone(),
-    );
-
-    match user_registration_error {
-        Ok(()) => {
-            info!(ns = socket.ns(), ?socket.id, "Registered user");
-            socket.emit("auth", &data).ok();
-        },
-        Err(e) => {
-            info!(ns = socket.ns(), ?socket.id, ?e, "Failed to register");
-            if let Ok(json) = LoginResponse::Failure(e.to_string()).to_json() {
-                socket.emit("auth-error", &json).ok();
-            } else {
-                error!(ns = socket.ns(), ?socket.id, "Failed to serialize auth error");
-            }
-            socket.disconnect();
-            return;
-        }
-    }
-
-    if let Ok(serialized_message) = server.lock().await.get_friends_list(user_id.clone()).to_json() {
-        socket.emit("friends-list", &serialized_message.to_string()).ok();
-    } else {
-        error!(ns = socket.ns(), ?socket.id, "Failed to serialize friends list");
-    }
-
-    listen_for_chat_messages(&socket, server.clone());
-
-    // Handle disconnection
-    let server_clone = server.clone();
-    socket.on_disconnect(move || {
-        let server = server_clone.clone();
-        let user_id = user_id.clone();
-        async move {
-            server.lock().await.remove_user(&user_id).await;
-        }
-    });
 }

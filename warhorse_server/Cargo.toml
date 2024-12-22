@@ -4,11 +4,11 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-horse_protocol = { path = "../warhorse_protocol" }
+warhorse_protocol = { path = "../warhorse_protocol" }
 
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
-axum = "0.7.9"
-socketioxide = "0.15.1"
+tokio-stream = { workspace = true }
+tonic = { workspace = true }
 
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -16,3 +16,5 @@ serde_json = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 regex = "1.11.1"
+
+chrono = { workspace = true }

@@ -1,0 +1,105 @@
+syntax = "proto3";
+
+package online_service;
+
+import "google/protobuf/empty.proto";
+
+service OnlineService {
+  // Stream messages for a client
+  rpc StreamMessages (ConnectRequest) returns (stream ChatMessage);
+  
+  // Send a private message to another user
+  rpc SendPrivateChatMessage (PrivateChatMessageRequest) returns (RequestResponse );
+
+  // Send a message to a channel
+  rpc SendChannelChatMessage (ChannelChatMessageRequest) returns (RequestResponse );
+
+  // Join a channel
+  rpc JoinChannel (JoinChannelRequest) returns (RequestResponse);
+
+  // Leave a channel
+  rpc LeaveChannel (LeaveChannelRequest) returns (RequestResponse);
+
+  // Get a list of channels
+  rpc ListChannels (google.protobuf.Empty) returns (ChannelList);
+
+  rpc ListMyChannels (MyChannelsRequest) returns (ChannelList);
+
+  // Get a list of users in a channel
+  rpc ListChannelUsers (ChannelUsersRequest) returns (UserList);
+}
+
+// Request to connect to the service
+message ConnectRequest {
+  string user_id = 1;
+  string display_name = 2;
+}
+
+// Chat message received by the service
+message ChatMessage {
+  string from_user_id = 1;
+  string from_display_name = 2;
+  string channel_id = 3;
+  string content = 4;
+  bool is_private = 5;
+  int64 timestamp = 6;
+}
+
+// Request to send a private message
+message PrivateChatMessageRequest {
+  string from_user_id = 1;  // @todo: need actual auth
+  string to_user_id = 2;
+  string content = 3;
+}
+
+// Request to send a message to a channel
+message ChannelChatMessageRequest {
+  string from_user_id = 1;  // @todo: need actual auth
+  string from_display_name = 2;
+  string channel_id = 3;
+  string content = 4;
+  int64 timestamp = 5;
+}
+
+// Request to join a channel
+message JoinChannelRequest {
+  string user_id = 1; // @todo: need actual auth
+  string channel_id = 2;
+}
+
+// Request to leave a channel
+message LeaveChannelRequest {
+  string user_id = 1; // @todo: need actual auth
+  string channel_id = 2;
+}
+
+// Response to a generic request
+message RequestResponse {
+  bool success = 1;
+  string error = 2;
+}
+
+// List of channels
+message ChannelList {
+  repeated string channels = 1;
+}
+
+// Request to get a list of channels the user is in
+message MyChannelsRequest {
+  string user_id = 1; // @todo: need actual auth
+}
+
+message ChannelUsersRequest {
+    string channel_id = 1;
+}
+
+// User
+message User {
+  string user_id = 1;
+  string display_name = 2;
+}
+
+// List of users
+message UserList {
+  repeated User users = 1;
+}

@@ -1,8 +1,12 @@
 [package]
-name = "horse_protocol"
+name = "warhorse_protocol"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-serde = { workspace = true, features = ["derive"] }
-serde_json = { workspace = true }
+tonic = { workspace = true }
+prost = { workspace = true }
+tokio-stream = { workspace = true }
+
+[build-dependencies]
+tonic-build = { workspace = true }
