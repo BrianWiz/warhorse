@@ -91,7 +91,7 @@ where T: Database + Send + Sync + 'static
         }
     }
 
-    /// Registers a new user and logs them in
+    /// Registers a new user and logs them in if successful
     pub async fn register_user(
         &mut self,
         req: UserRegistration,
@@ -138,21 +138,39 @@ where T: Database + Send + Sync + 'static
 
     /// Whether two users are friends
     fn are_friends(&self, user_id: UserId, friend_id: UserId) -> bool {
-        true // Temp until we have an actual database connected
+        self.data_service.friends_get(user_id).iter().any(|f| f.id == friend_id)
     }
 
-    /// Whether a user is in a room
+    /// Whether a user is in a specific room or not
     fn user_in_room(&self, user_id: UserId, room_id: RoomId) -> bool {
+        let room_id_clone = room_id.clone();
         if self.room_exists(room_id) {
-            true // Temp until we have an actual database connected
+            match self.get_socket_id(user_id) {
+                Ok(id) => {
+                    match self.get_socket(id) {
+                        Some(socket) => {
+                            match socket.rooms() {
+                                Ok(rooms) => {
+                                    let room_id = room_id_clone.as_str();
+                                    rooms.iter().any(|r| r == room_id)
+                                }
+                                Err(_) => false,
+                            }
+                        },
+                        None => false,
+                    }
+                }
+                Err(_) => false,
+            }
         } else {
             false
         }
     }
 
-    /// Whether a room exists
+    /// Whether a room exists or not
     fn room_exists(&self, room_id: RoomId) -> bool {
-        true // Temp until we have an actual database connected
+        let room_id = room_id.as_str();
+        self.io.rooms().iter().flatten().any(|r| r == room_id)
     }
 
     /// Gets the user ID of the logged in user associated with a socket
@@ -271,7 +289,7 @@ pub fn handle_user_disconnect<T: Database + Send + Sync + 'static>(
 
 pub async fn handle_connection<T: Database + Send + Sync + 'static>(
     socket: SocketRef,
-    data: Value,
+    _data: Value,
     server: Arc<Mutex<WarhorseServer<T>>>
 ) {
 

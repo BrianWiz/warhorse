@@ -65,4 +65,3 @@ pub fn invalid_display_name(lang: Language) -> ServerError {
         Language::French => format!("Les noms d'affichage doivent comporter entre {} et {} caractères", DISPLAY_NAME_MIN_LENGTH, DISPLAY_NAME_MAX_LENGTH).into(),
     }
 }
-
