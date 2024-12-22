@@ -171,7 +171,7 @@ where T: Database + Send + Sync + 'static
             ChatChannel::Room(room_id) => {
                 if self.user_in_room(sender_id.clone(), room_id.clone()) {
                     self.get_room(room_id)
-                        .emit("chat-message", &serialized_message)?;
+                        .emit(EVENT_RECEIVE_CHAT_MESSAGE, &serialized_message)?;
                 } else {
                     Err(format!("{} is not in room {}", sender_id, room_id))?;
                 }
@@ -409,13 +409,11 @@ pub fn listen_for_chat_messages<T: Database + Send + Sync + 'static>(socket_ref:
                         },
                         None => {
                             error!(ns = socket.ns(), ?socket.id, "Failed to get user ID");
-                            socket.disconnect().ok();
                         }
                     }
                 },
                 Err(e) => {
                     error!(ns = socket.ns(), ?socket.id, ?e, "Failed to parse chat message");
-                    socket.disconnect().ok();
                 }
             };
         }
@@ -436,13 +434,26 @@ pub fn listen_for_user_login<T: Database + Send + Sync + 'static>(
                         },
                         Err(e) => {
                             error!(ns = socket.ns(), ?socket.id, ?e, "Failed to log in user");
-                            socket.disconnect().ok();
+                            match RequestError(e.0).to_json() {
+                                Ok(json) => {
+                                    match socket.emit(EVENT_RECEIVE_ERROR, &json) {
+                                        Ok(_) => {
+                                            info!(ns = socket.ns(), ?socket.id, "Sent error response");
+                                        },
+                                        Err(e) => {
+                                            error!(ns = socket.ns(), ?socket.id, ?e, "Failed to send error response");
+                                        }
+                                    }
+                                },
+                                Err(e) => {
+                                    error!(ns = socket.ns(), ?socket.id, ?e, "Failed to serialize error");
+                                }
+                            }
                         }
                     }
                 },
                 Err(e) => {
                     error!(ns = socket.ns(), ?socket.id, ?e, "Failed to parse login data");
-                    socket.disconnect().ok();
                 }
             }
         }
@@ -462,7 +473,22 @@ pub fn listen_for_user_registration<T: Database + Send + Sync + 'static>(
                             info!(ns = socket.ns(), ?socket.id, "User registered");
                         },
                         Err(e) => {
-                            error!(ns = socket.ns(), ?socket.id, ?e, "Failed to register user");
+                            info!(ns = socket.ns(), ?socket.id, ?e, "Failed to register user");
+                            match RequestError(e.0).to_json() {
+                                Ok(json) => {
+                                    match socket.emit(EVENT_RECEIVE_ERROR, &json) {
+                                        Ok(_) => {
+                                            info!(ns = socket.ns(), ?socket.id, "Sent error response");
+                                        },
+                                        Err(e) => {
+                                            error!(ns = socket.ns(), ?socket.id, ?e, "Failed to send error response");
+                                        }
+                                    }
+                                },
+                                Err(e) => {
+                                    error!(ns = socket.ns(), ?socket.id, ?e, "Failed to serialize error");
+                                }
+                            }
                         }
                     }
                 },

@@ -48,11 +48,8 @@ pub const EVENT_SEND_CHAT_MESSAGE: &str = "/chat/send";
 /// Event for receiving a successful user login response, received from the server.
 pub const EVENT_RECEIVE_USER_LOGIN: &str = "/user/login";
 
-/// Event for receiving a user registration validation error, received from the server.
-pub const EVENT_RECEIVE_USER_REGISTER_ERROR: &str = "/user/register/error";
-
-/// Event for receiving a user login validation error, received from the server.
-pub const EVENT_RECEIVE_USER_LOGIN_ERROR: &str = "/user/login/error";
+/// Event for receiving an error response, received from the server.
+pub const EVENT_RECEIVE_ERROR: &str = "/error";
 
 /// Event for receiving your friend list, received from the server.
 pub const EVENT_RECEIVE_FRIENDS: &str = "/friends/receive";
@@ -152,14 +149,10 @@ pub struct UserRegistration {
 
 impl ProtoType for UserRegistration {}
 
-/// Response to a login or registration request (registering automatically logs in the user)
 #[derive(Debug, Serialize, Deserialize)]
-pub enum LoginResponse {
-    Success(UserId),
-    Failure(String),
-}
+pub struct RequestError(pub String);
 
-impl ProtoType for LoginResponse {}
+impl ProtoType for RequestError {}
 
 /// The online status of a friend
 #[derive(Debug, Clone, Serialize, Deserialize)]
