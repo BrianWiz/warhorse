@@ -87,8 +87,14 @@ where T: Database + Send + Sync + 'static
         if let Some(user) = user_partial {
             // @todo: do actual authentication here
 
-            // register the user's socket
-            self.user_sockets.insert(user.id, socket_id);
+            // Actually log them in
+            self.user_sockets.insert(user.id.clone(), socket_id);
+
+            // Send the user their friends list
+            self.send_friend_list(user.id.clone());
+
+            // Send the user their block list
+            self.send_block_list(user.id);
             Ok(())
         } else {
             Err(crate::i18n::invalid_login(req.language))?
@@ -117,8 +123,16 @@ where T: Database + Send + Sync + 'static
             return Err(crate::i18n::email_already_exists(req.language));
         }
 
+        // Log them in
         let new_user_id = self.data_service.users_insert(req);
-        self.user_sockets.insert(new_user_id, socket_id);
+        self.user_sockets.insert(new_user_id.clone(), socket_id);
+
+        // Send the user their friends list
+        self.send_friend_list(new_user_id.clone());
+
+        // Send the user their block list
+        self.send_block_list(new_user_id);
+
         Ok(())
     }
 
