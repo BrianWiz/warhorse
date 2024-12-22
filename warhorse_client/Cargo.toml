@@ -17,3 +17,4 @@ tracing-subscriber = { workspace = true }
 
 [dev-dependencies]
 ctrlc = "3.4.5"
+clap = {  version = "4.5.23", features = ["derive"] }

@@ -1,9 +1,17 @@
 use std::sync::mpsc;
+use clap::Parser;
 use tracing::{error, info};
 use tracing_subscriber::FmtSubscriber;
 use warhorse_client::error::ClientError;
 use warhorse_client::{WarhorseClient, WarhorseClientCommands};
-use warhorse_protocol::{Friend, Language, RequestError, UserPartial, UserRegistration};
+use warhorse_protocol::{Friend, Language, LoginUserIdentity, RequestError, UserLogin, UserPartial, UserRegistration};
+
+#[derive(clap::Parser, Debug)]
+#[command(author, version, about, long_about = None)]
+struct Args {
+    #[arg(long, default_value = "test")]
+    account_name: String,
+}
 
 fn main() -> Result<(), ClientError> {
     tracing::subscriber::set_global_default(FmtSubscriber::default())?;
@@ -40,12 +48,16 @@ fn main() -> Result<(), ClientError> {
 
 fn on_receive_hello(client: &mut WarhorseClientCommands, language: Language) {
     info!("Received hello from server");
-    client.user_registration = Some(UserRegistration {
+
+    // the server has fake data so we can just try logging in as one of the fake users for now
+    let args = Args::parse();
+    info!("Using account name: {}", args.account_name);
+    let password = "password".into();
+
+    client.user_login = Some(UserLogin {
+        identity: LoginUserIdentity::AccountName(args.account_name),
+        password,
         language,
-        account_name: "test".to_string(),
-        password: "test123456".to_string(),
-        email: "test@example.com".to_string(),
-        display_name: "SomeDisplayName".to_string(),
     });
 }
 

@@ -13,6 +13,7 @@ use socketioxide::SocketIo;
 use tokio::sync::Mutex;
 use tracing::{error, info};
 use tracing_subscriber::FmtSubscriber;
+use warhorse_protocol::UserRegistration;
 use crate::error::ServerError;
 use crate::server::WarhorseServer;
 
@@ -32,10 +33,45 @@ async fn main() -> Result<(), ServerError> {
         let io = server.lock().await.io().clone();
         io.ns("/", move |socket: SocketRef, Data::<Value>(data)| {
             let server = server.clone();
-            async move {
+            Box::pin(async move {
                 server::handle_connection(socket, data, server).await;
-            }
+            })
         });
+    }
+
+    // add fake user data
+    {
+        let mut server = server.lock().await;
+        server.register_user(
+            UserRegistration {
+                account_name: "test".to_string(),
+                email: "test@example.com".to_string(),
+                display_name: "Test User".to_string(),
+                password: "password".to_string(),
+                language: warhorse_protocol::Language::English,
+            },
+        None
+        ).await?;
+        server.register_user(
+            UserRegistration {
+                account_name: "test2".to_string(),
+                email: "test2@example.com".to_string(),
+                display_name: "Test User 2".to_string(),
+                password: "password".to_string(),
+                language: warhorse_protocol::Language::English,
+            },
+            None
+        ).await?;
+        server.register_user(
+            UserRegistration {
+                account_name: "test3".to_string(),
+                email: "test3@example.com".to_string(),
+                display_name: "Test User 3".to_string(),
+                password: "password".to_string(),
+                language: warhorse_protocol::Language::English,
+            },
+            None
+        ).await?;
     }
 
     let app = axum::Router::new()

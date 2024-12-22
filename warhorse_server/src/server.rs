@@ -89,12 +89,7 @@ where T: Database + Send + Sync + 'static
 
             // Actually log them in
             self.user_sockets.insert(user.id.clone(), socket_id);
-
-            // Send the user their friends list
-            self.send_friend_list(user.id.clone());
-
-            // Send the user their block list
-            self.send_block_list(user.id);
+            self.send_post_login_data(user.id);
             Ok(())
         } else {
             Err(crate::i18n::invalid_login(req.language))?
@@ -105,7 +100,7 @@ where T: Database + Send + Sync + 'static
     pub async fn register_user(
         &mut self,
         req: UserRegistration,
-        socket_id: SocketId
+        socket_id: Option<SocketId>
     ) -> Result<(), ServerError> {
         validate_password(&req.password, req.language)?;
         validate_account_name(&req.account_name, req.language)?;
@@ -123,16 +118,15 @@ where T: Database + Send + Sync + 'static
             return Err(crate::i18n::email_already_exists(req.language));
         }
 
-        // Log them in
+        // insert into the db
         let new_user_id = self.data_service.users_insert(req);
-        self.user_sockets.insert(new_user_id.clone(), socket_id);
+        info!("Registered new user: {}", new_user_id);
 
-        // Send the user their friends list
-        self.send_friend_list(new_user_id.clone());
-
-        // Send the user their block list
-        self.send_block_list(new_user_id);
-
+        // log them in if there's a socket available
+        if let Some(socket_id) = socket_id {
+            self.user_sockets.insert(new_user_id.clone(), socket_id);
+            self.send_post_login_data(new_user_id);
+        }
         Ok(())
     }
 
@@ -141,8 +135,15 @@ where T: Database + Send + Sync + 'static
         self.user_sockets.remove(user_id);
     }
 
+    /// Sends post login data to the user
+    fn send_post_login_data(&self, user_id: UserId) {
+        self.send_friend_list(user_id.clone());
+        self.send_block_list(user_id.clone());
+        self.send_friend_requests(user_id);
+    }
+
     /// Sends a private message to a specific user
-    pub fn send_chat_message(&self, sender_id: UserId, message: SendChatMessage) -> Result<(), ServerError> {
+    fn send_chat_message(&self, sender_id: UserId, message: SendChatMessage) -> Result<(), ServerError> {
         let serialized_message = message.to_json()?;
         match message.channel {
             ChatChannel::PrivateMessage(user_id) => {
@@ -181,7 +182,27 @@ where T: Database + Send + Sync + 'static
         Ok(())
     }
 
-    pub fn send_friend_request(&mut self, sender_id: UserId, req: FriendRequest) -> Result<(), ServerError> {
+    fn send_friend_requests(&self, user_id: UserId) {
+        match vec_to_json(self.data_service.friend_requests_get(user_id.clone())) {
+            Ok(friend_requests) => {
+                match self.get_socket_id(user_id) {
+                    Ok(socket_id) => {
+                        if let Some(socket) = self.get_socket(socket_id) {
+                            let _= socket.emit(EVENT_RECEIVE_FRIEND_REQUESTS, &friend_requests);
+                        }
+                    },
+                    Err(e) => {
+                        error!(?e, "Failed to get socket ID");
+                    }
+                }
+            },
+            Err(e) => {
+                error!(?e, "Failed to serialize friend requests");
+            }
+        }
+    }
+
+    fn send_friend_request(&mut self, sender_id: UserId, req: FriendRequest) -> Result<(), ServerError> {
         if self.are_friends(sender_id.clone(), req.friend_id.clone()) {
             warn!("{} is already friends with {} but is trying to send a friend request", sender_id, req.friend_id);
             return Err(crate::i18n::already_friends(req.language));
@@ -217,7 +238,7 @@ where T: Database + Send + Sync + 'static
         Ok(())
     }
 
-    pub fn accept_friend_request(&mut self, user_id: UserId, req: AcceptFriendRequest) -> Result<(), ServerError> {
+    fn accept_friend_request(&mut self, user_id: UserId, req: AcceptFriendRequest) -> Result<(), ServerError> {
         if self.are_friends(user_id.clone(), req.friend_id.clone()) {
             info!("{} is already friends with {}", user_id, req.friend_id);
             return Err(crate::i18n::already_friends(req.language));
@@ -257,7 +278,7 @@ where T: Database + Send + Sync + 'static
     }
 
     /// Rejects a friend request
-    pub fn reject_friend_request(&mut self, user_id: UserId, req: RejectFriendRequest) -> Result<(), ServerError> {
+    fn reject_friend_request(&mut self, user_id: UserId, req: RejectFriendRequest) -> Result<(), ServerError> {
         self.data_service.friend_requests_remove(user_id, req.friend_id.clone());
 
         // We send the friend list back to the user who was rejected so that they can see the updated status.
@@ -266,7 +287,7 @@ where T: Database + Send + Sync + 'static
     }
 
     /// Removes a friend
-    pub fn remove_friend(&mut self, user_id: UserId, req: RemoveFriendRequest) -> Result<(), ServerError> {
+    fn remove_friend(&mut self, user_id: UserId, req: RemoveFriendRequest) -> Result<(), ServerError> {
         self.data_service.friends_remove(user_id.clone(), req.friend_id.clone());
 
         // We need to refresh both users friends list
@@ -276,7 +297,7 @@ where T: Database + Send + Sync + 'static
     }
 
     /// Blocks a user
-    pub fn block_user(&mut self, user_id: UserId, req: BlockUserRequest) -> Result<(), ServerError> {
+    fn block_user(&mut self, user_id: UserId, req: BlockUserRequest) -> Result<(), ServerError> {
         self.data_service.user_blocks_insert(user_id.clone(), req.user_id.clone());
 
         // We need to refresh both users friends list
@@ -289,7 +310,7 @@ where T: Database + Send + Sync + 'static
     }
 
     /// Unblocks a user
-    pub fn unblock_user(&mut self, user_id: UserId, req: UnblockUserRequest) -> Result<(), ServerError> {
+    fn unblock_user(&mut self, user_id: UserId, req: UnblockUserRequest) -> Result<(), ServerError> {
         self.data_service.user_blocks_remove(user_id.clone(), req.user_id);
         self.send_block_list(user_id);
         Ok(())
@@ -396,7 +417,7 @@ where T: Database + Send + Sync + 'static
     }
 }
 
-pub fn listen_for_chat_messages<T: Database + Send + Sync + 'static>(socket_ref: &SocketRef, server: Arc<Mutex<WarhorseServer<T>>>) {
+fn listen_for_chat_messages<T: Database + Send + Sync + 'static>(socket_ref: &SocketRef, server: Arc<Mutex<WarhorseServer<T>>>) {
     socket_ref.on(EVENT_SEND_CHAT_MESSAGE, move |socket: SocketRef, Data::<Value>(data)| {
         async move {
             match SendChatMessage::from_json(data) {
@@ -420,7 +441,7 @@ pub fn listen_for_chat_messages<T: Database + Send + Sync + 'static>(socket_ref:
     });
 }
 
-pub fn listen_for_user_login<T: Database + Send + Sync + 'static>(
+fn listen_for_user_login<T: Database + Send + Sync + 'static>(
     socket_ref: &SocketRef,
     server: Arc<Mutex<WarhorseServer<T>>>
 ) {
@@ -460,7 +481,7 @@ pub fn listen_for_user_login<T: Database + Send + Sync + 'static>(
     });
 }
 
-pub fn listen_for_user_registration<T: Database + Send + Sync + 'static>(
+fn listen_for_user_registration<T: Database + Send + Sync + 'static>(
     socket_ref: &SocketRef,
     server: Arc<Mutex<WarhorseServer<T>>>
 ) {
@@ -468,7 +489,7 @@ pub fn listen_for_user_registration<T: Database + Send + Sync + 'static>(
         async move {
             match UserRegistration::from_json(data) {
                 Ok(data) => {
-                    match server.lock().await.register_user(data, socket.id).await {
+                    match server.lock().await.register_user(data, Some(socket.id)).await {
                         Ok(_) => {
                             info!(ns = socket.ns(), ?socket.id, "User registered");
                         },
@@ -500,7 +521,7 @@ pub fn listen_for_user_registration<T: Database + Send + Sync + 'static>(
     });
 }
 
-pub fn listen_for_friend_requests<T: Database + Send + Sync + 'static>(
+fn listen_for_friend_requests<T: Database + Send + Sync + 'static>(
     socket_ref: &SocketRef,
     server: Arc<Mutex<WarhorseServer<T>>>
 ) {
@@ -527,7 +548,7 @@ pub fn listen_for_friend_requests<T: Database + Send + Sync + 'static>(
     });
 }
 
-pub fn listen_for_accept_friend_requests<T: Database + Send + Sync + 'static>(
+fn listen_for_accept_friend_requests<T: Database + Send + Sync + 'static>(
     socket_ref: &SocketRef,
     server: Arc<Mutex<WarhorseServer<T>>>
 ) {
@@ -554,7 +575,7 @@ pub fn listen_for_accept_friend_requests<T: Database + Send + Sync + 'static>(
     });
 }
 
-pub fn listen_for_reject_friend_requests<T: Database + Send + Sync + 'static>(
+fn listen_for_reject_friend_requests<T: Database + Send + Sync + 'static>(
     socket_ref: &SocketRef,
     server: Arc<Mutex<WarhorseServer<T>>>
 ) {
@@ -581,7 +602,7 @@ pub fn listen_for_reject_friend_requests<T: Database + Send + Sync + 'static>(
     });
 }
 
-pub fn listen_for_remove_friend<T: Database + Send + Sync + 'static>(
+fn listen_for_remove_friend<T: Database + Send + Sync + 'static>(
     socket_ref: &SocketRef,
     server: Arc<Mutex<WarhorseServer<T>>>
 ) {
@@ -608,7 +629,7 @@ pub fn listen_for_remove_friend<T: Database + Send + Sync + 'static>(
     });
 }
 
-pub fn listen_for_block_user_requests<T: Database + Send + Sync + 'static>(
+fn listen_for_block_user_requests<T: Database + Send + Sync + 'static>(
     socket_ref: &SocketRef,
     server: Arc<Mutex<WarhorseServer<T>>>
 ) {
@@ -635,7 +656,7 @@ pub fn listen_for_block_user_requests<T: Database + Send + Sync + 'static>(
     });
 }
 
-pub fn listen_for_unblock_user_requests<T: Database + Send + Sync + 'static>(
+fn listen_for_unblock_user_requests<T: Database + Send + Sync + 'static>(
     socket_ref: &SocketRef,
     server: Arc<Mutex<WarhorseServer<T>>>
 ) {
@@ -662,7 +683,7 @@ pub fn listen_for_unblock_user_requests<T: Database + Send + Sync + 'static>(
     });
 }
 
-pub fn handle_user_disconnect<T: Database + Send + Sync + 'static>(
+fn handle_user_disconnect<T: Database + Send + Sync + 'static>(
     socket: SocketRef,
     user_id: UserId,
     server: Arc<Mutex<WarhorseServer<T>>>
@@ -685,7 +706,7 @@ pub async fn handle_connection<T: Database + Send + Sync + 'static>(
 
     info!(ns = socket.ns(), ?socket.id, "Socket.IO connected");
 
-    socket.emit("hello", &crate::i18n::hello_message(Language::English)).ok();
+    socket.emit(EVENT_RECEIVE_HELLO, &crate::i18n::hello_message(Language::English)).ok();
 
     listen_for_user_login(&socket, server.clone());
     listen_for_user_registration(&socket, server.clone());
