@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-horse_protocol = { path = "../warhorse_protocol" }
+warhorse_protocol = { path = "../warhorse_protocol" }
 
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
 axum = "0.7.9"

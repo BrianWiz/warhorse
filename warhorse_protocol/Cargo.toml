@@ -1,5 +1,5 @@
 [package]
-name = "horse_protocol"
+name = "warhorse_protocol"
 version = "0.1.0"
 edition = "2021"
 
