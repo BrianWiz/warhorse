@@ -36,7 +36,7 @@ impl WarhorseClient {
             })
             .on(EVENT_RECEIVE_HELLO, move |payload, socket| {
                 match payload {
-                    Payload::Text(text) => {
+                    Payload::Text(_) => {
                         let mut commands = WarhorseClientCommands {
                             user_login: None,
                             user_registration: None,
@@ -69,9 +69,14 @@ impl WarhorseClient {
                 match payload {
                     Payload::Text(text) => {
                         if let Some(first) = text.first() {
-                            let friends_list = json_to_vec::<Friend>(first.clone())
-                                .expect("Failed to parse friends list");
-                            on_receive_friends_list(&friends_list);
+                            match json_to_vec::<Friend>(first.clone()) {
+                                Ok(friends) => {
+                                    on_receive_friends_list(&friends);
+                                }
+                                Err(e) => {
+                                    error!("Failed to parse friends list: {:?}", e);
+                                }
+                            }
                         }
                     }
                     _ => {
@@ -83,9 +88,14 @@ impl WarhorseClient {
                 match payload {
                     Payload::Text(text) => {
                         if let Some(first) = text.first() {
-                            let blocked_list = json_to_vec::<UserPartial>(first.clone())
-                                .expect("Failed to parse blocked list");
-                            on_receive_blocked_list(&blocked_list);
+                            match json_to_vec::<UserPartial>(first.clone()) {
+                                Ok(blocked_list) => {
+                                    on_receive_blocked_list(&blocked_list);
+                                }
+                                Err(e) => {
+                                    error!("Failed to parse blocked list: {:?}", e);
+                                }
+                            }
                         }
                     }
                     _ => {
@@ -97,9 +107,14 @@ impl WarhorseClient {
                 match payload {
                     Payload::Text(text) => {
                         if let Some(first) = text.first() {
-                            let friend_requests = json_to_vec::<Friend>(first.clone())
-                                .expect("Failed to parse friend requests");
-                            on_receive_friend_requests(&friend_requests);
+                             match json_to_vec::<Friend>(first.clone()) {
+                                 Ok(friends) => {
+                                     on_receive_friend_requests(&friends);
+                                 }
+                                 Err(e) => {
+                                     error!("Failed to parse friend requests: {:?}", e);
+                                 }
+                             }
                         }
                     }
                     _ => {
@@ -111,15 +126,25 @@ impl WarhorseClient {
                 match payload {
                     Payload::Text(text) => {
                         if let Some(first) = text.first() {
-                            let friend = json_to_vec::<Friend>(first.clone())
-                                .expect("Failed to parse friend request accepted");
-                            on_receive_friend_request_accepted(&friend[0]);
+                            match json_to_vec::<Friend>(first.clone()) {
+                                Ok(mut friends) => {
+                                    if let Some(friend) = friends.pop() {
+                                        on_receive_friend_request_accepted(&friend);
+                                    }
+                                }
+                                Err(e) => {
+                                    error!("Failed to parse friend request accepted: {:?}", e);
+                                }
+                            }
                         }
                     }
                     _ => {
                         error!("Unexpected payload: {:?}", payload);
                     }
                 }
+            })
+            .on(EVENT_RECEIVE_CHAT_MESSAGE, move |payload, _socket| {
+
             })
             .connect()
             .expect("Connection failed");

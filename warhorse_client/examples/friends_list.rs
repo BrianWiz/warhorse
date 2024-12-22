@@ -23,7 +23,7 @@ fn main() -> Result<(), ClientError> {
         language,
         "http://localhost:3000",
         on_receive_hello,
-         on_receive_request_error,
+        on_receive_request_error,
         on_receive_friends_list,
         on_receive_blocked_list,
         on_receive_friend_requests,
