@@ -1,6 +1,6 @@
 # Warhorse
 
-# Planned Features (for now)
+## Planned Features (for now)
 - live friends list update including user online status/presence
 - real-time chat with private messages and rooms (channels)
 - live game sessions
