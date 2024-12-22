@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use warhorse_protocol::{Friend, FriendOnlineStatus, UserPartial, UserId, UserRegistration};
+use warhorse_protocol::{Friend, FriendStatus, UserPartial, UserId, UserRegistration};
 
 use super::Database;
 
@@ -8,6 +8,7 @@ pub struct InMemoryDatabase {
     users: HashMap<UserId, UserPartial>,
     friendships: HashMap<UserId, Vec<UserId>>,
     friend_requests: HashMap<UserId, Vec<UserId>>,
+    user_blocks: Vec<(UserId, UserId)>,
     next_user_id: usize,
 }
 
@@ -18,6 +19,7 @@ impl Database for InMemoryDatabase {
             users: HashMap::new(),
             friendships: HashMap::new(),
             friend_requests: HashMap::new(),
+            user_blocks: Vec::new(),
             next_user_id: 0,
         }
     }
@@ -62,6 +64,30 @@ impl Database for InMemoryDatabase {
         }).cloned()
     }
 
+    fn user_blocks_insert(&mut self, user_id: UserId, blocked_id: UserId) {
+        self.user_blocks.push((user_id, blocked_id));
+    }
+
+    fn user_blocks_remove(&mut self, user_id: UserId, blocked_id: UserId) {
+        self.user_blocks.retain(|(id, blocked)| id != &user_id || blocked != &blocked_id);
+    }
+
+    fn user_blocks_get_blocks_for_user(&self, user_id: UserId) -> Vec<UserPartial> {
+        self.user_blocks.iter()
+            .filter_map(|(id, blocked_id)| {
+                if id == &user_id {
+                    self.users_get(blocked_id.clone())
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
+
+    fn user_is_blocked(&self, user_id: UserId, blocked_id: UserId) -> bool {
+        self.user_blocks.iter().any(|(id, blocked)| id == &user_id && blocked == &blocked_id)
+    }
+
     fn friend_requests_insert(&mut self, user_id: UserId, friend_id: UserId) {
         if let Some(friend_requests) = self.friend_requests.get_mut(&user_id) {
             friend_requests.push(friend_id);
@@ -97,7 +123,7 @@ impl Database for InMemoryDatabase {
                 self.users_get(id.clone()).map(|user| Friend {
                     id: user.id.clone(),
                     display_name: user.display_name.clone(),
-                    status: FriendOnlineStatus::Offline, // it is up to the caller to figure out the status, so we default to offline.
+                    status: FriendStatus::Offline, // it is up to the caller to figure out the status, so we default to offline.
                 })
             })
             .collect()

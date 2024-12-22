@@ -1,5 +1,5 @@
 use warhorse_protocol::{Language, UserId};
-use crate::config::*;
+use warhorse_protocol::{ACCOUNT_NAME_MAX_LENGTH, ACCOUNT_NAME_MIN_LENGTH, DISPLAY_NAME_MAX_LENGTH, DISPLAY_NAME_MIN_LENGTH, PASSWORD_MIN_LENGTH};
 use crate::error::ServerError;
 
 pub fn hello_message(lang: Language) -> String {
@@ -71,5 +71,13 @@ pub fn already_friends(lang: Language) -> ServerError {
         Language::English => "You are already friends".into(),
         Language::Spanish => "Ya son amigos".into(),
         Language::French => "Vous êtes déjà amis".into(),
+    }
+}
+
+pub fn user_is_blocked(lang: Language) -> ServerError {
+    match lang {
+        Language::English => "User is blocked".into(),
+        Language::Spanish => "Usuario bloqueado".into(),
+        Language::French => "L'utilisateur est bloqué".into(),
     }
 }

@@ -1,6 +1,6 @@
 use regex::Regex;
 use warhorse_protocol::Language;
-use crate::config::*;
+use warhorse_protocol::{ACCOUNT_NAME_MAX_LENGTH, ACCOUNT_NAME_MIN_LENGTH, DISPLAY_NAME_MAX_LENGTH, DISPLAY_NAME_MIN_LENGTH, PASSWORD_MIN_LENGTH};
 use crate::error::ServerError;
 
 pub fn validate_password(password: &String, language: Language) -> Result<(), ServerError> {

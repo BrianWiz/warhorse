@@ -13,6 +13,8 @@ pub trait Database {
     fn users_get_by_email(&self, email: &str) -> Option<UserPartial>;
     fn user_blocks_insert(&mut self, user_id: UserId, blocked_id: UserId);
     fn user_blocks_remove(&mut self, user_id: UserId, blocked_id: UserId);
+    fn user_blocks_get_blocks_for_user(&self, user_id: UserId) -> Vec<UserPartial>;
+    fn user_is_blocked(&self, user_id: UserId, blocked_id: UserId) -> bool;
 
     // Friends
     fn friend_requests_insert(&mut self, user_id: UserId, friend_id: UserId);

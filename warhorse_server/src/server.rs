@@ -10,10 +10,11 @@ use socketioxide::operators::BroadcastOperators;
 use socketioxide::socket::Sid;
 use warhorse_protocol::*;
 use tracing::{error, info};
-
+use tracing::log::warn;
 use crate::data_service::DataService;
 use crate::database::Database;
 use crate::error::ServerError;
+use crate::utils::{is_valid_email, validate_account_name, validate_display_name, validate_password};
 
 type SocketId = Sid;
 
@@ -42,11 +43,11 @@ where T: Database + Send + Sync + 'static
     }
 
     /// Gets the online status of a user
-    fn get_online_status(&self, user_id: UserId) -> FriendOnlineStatus {
+    fn get_online_status(&self, user_id: UserId) -> FriendStatus {
         if self.user_sockets.contains_key(&user_id) {
-            FriendOnlineStatus::Online
+            FriendStatus::Online
         } else {
-            FriendOnlineStatus::Offline
+            FriendStatus::Offline
         }
     }
 
@@ -100,8 +101,24 @@ where T: Database + Send + Sync + 'static
         req: UserRegistration,
         socket_id: SocketId
     ) -> Result<(), ServerError> {
-        let user_id = self.data_service.create_user(req)?;
-        self.user_sockets.insert(user_id, socket_id);
+        validate_password(&req.password, req.language)?;
+        validate_account_name(&req.account_name, req.language)?;
+        validate_display_name(&req.display_name, req.language)?;
+
+        if !is_valid_email(&req.email) {
+            return Err(crate::i18n::invalid_email(req.language));
+        }
+
+        if self.data_service.users_get_by_account_name(&req.account_name).is_some() {
+            return Err(crate::i18n::account_name_already_exists(req.language));
+        }
+
+        if self.data_service.users_get_by_email(&req.email).is_some() {
+            return Err(crate::i18n::email_already_exists(req.language));
+        }
+
+        let new_user_id = self.data_service.users_insert(req);
+        self.user_sockets.insert(new_user_id, socket_id);
         Ok(())
     }
 
@@ -116,14 +133,25 @@ where T: Database + Send + Sync + 'static
         match message.channel {
             ChatChannel::PrivateMessage(user_id) => {
                 if self.are_friends(sender_id.clone(), user_id.clone()) {
+
+                    if self.data_service.user_is_blocked(sender_id.clone(), user_id.clone()) {
+                        warn!("{} has blocked {} but is trying to send a private chat message", sender_id, user_id);
+                        return Err(crate::i18n::user_is_blocked(message.language));
+                    }
+
+                    if self.data_service.user_is_blocked(user_id.clone(), sender_id.clone()) {
+                        warn!("{} has blocked {} but {} is trying to send a private chat message", user_id, sender_id, sender_id);
+                        return Err(crate::i18n::user_is_blocked(message.language));
+                    }
+
                     let socket_id = self.get_socket_id(user_id.clone())?;
                     if let Some(socket) = self.get_socket(socket_id) {
-                        socket.emit("chat-message", &serialized_message)?;
+                        socket.emit(EVENT_RECEIVE_CHAT_MESSAGE, &serialized_message)?;
                     } else {
                         Err(format!("{} is not connected", user_id))?;
                     }
                 } else {
-                    Err(format!("{} is not friends with {}", sender_id, user_id))?;
+                    Err(format!("{} is not friends with {} but is trying to send a private chat message", sender_id, user_id))?;
                 }
             },
             ChatChannel::Room(room_id) => {
@@ -141,8 +169,18 @@ where T: Database + Send + Sync + 'static
 
     pub fn send_friend_request(&mut self, sender_id: UserId, req: FriendRequest) -> Result<(), ServerError> {
         if self.are_friends(sender_id.clone(), req.friend_id.clone()) {
-            info!("{} is already friends with {}", sender_id, req.friend_id);
-            Err(crate::i18n::already_friends(req.language))?;
+            warn!("{} is already friends with {} but is trying to send a friend request", sender_id, req.friend_id);
+            return Err(crate::i18n::already_friends(req.language));
+        }
+
+        if self.data_service.user_is_blocked(sender_id.clone(), req.friend_id.clone()) {
+            warn!("{} has blocked {} but is trying to send a friend request", sender_id, req.friend_id);
+            return Err(crate::i18n::user_is_blocked(req.language));
+        }
+
+        if self.data_service.user_is_blocked(req.friend_id.clone(), sender_id.clone()) {
+            warn!("{} has blocked {} but {} is trying to send a friend request", req.friend_id, sender_id, sender_id);
+            return Err(crate::i18n::user_is_blocked(req.language));
         }
 
         let friend = self.data_service.users_get(req.friend_id.clone());
@@ -157,7 +195,7 @@ where T: Database + Send + Sync + 'static
                 };
                 let friend_request_accepted = FriendRequestAccepted { friend };
                 let serialized_friend_request_accepted = friend_request_accepted.to_json()?;
-                socket.emit("friend-request", &serialized_friend_request_accepted)?;
+                socket.emit(EVENT_RECEIVE_FRIEND_REQUESTS, &serialized_friend_request_accepted)?;
             }
         } else {
             Err(format!("{} does not exist", req.friend_id))?
@@ -169,7 +207,17 @@ where T: Database + Send + Sync + 'static
     pub fn accept_friend_request(&mut self, user_id: UserId, req: AcceptFriendRequest) -> Result<(), ServerError> {
         if self.are_friends(user_id.clone(), req.friend_id.clone()) {
             info!("{} is already friends with {}", user_id, req.friend_id);
-            Err(crate::i18n::already_friends(req.language))?;
+            return Err(crate::i18n::already_friends(req.language));
+        }
+
+        if self.data_service.user_is_blocked(user_id.clone(), req.friend_id.clone()) {
+            warn!("{} has blocked {} but is trying to accept a friend request", user_id, req.friend_id);
+            return Err(crate::i18n::user_is_blocked(req.language));
+        }
+
+        if self.data_service.user_is_blocked(req.friend_id.clone(), user_id.clone()) {
+            warn!("{} has blocked {} but {} is trying to accept a friend request", req.friend_id, user_id, user_id);
+            return Err(crate::i18n::user_is_blocked(req.language));
         }
 
         self.data_service.friends_add(user_id.clone(), req.friend_id.clone());
@@ -188,30 +236,49 @@ where T: Database + Send + Sync + 'static
             }
         }
 
+        // refresh the friends list for both users
+        self.send_friend_list(user_id);
+        self.send_friend_list(req.friend_id);
+
         Ok(())
     }
 
     /// Rejects a friend request
     pub fn reject_friend_request(&mut self, user_id: UserId, req: RejectFriendRequest) -> Result<(), ServerError> {
-        self.data_service.friend_requests_remove(user_id, req.friend_id);
+        self.data_service.friend_requests_remove(user_id, req.friend_id.clone());
+
+        // We send the friend list back to the user who was rejected so that they can see the updated status.
+        self.send_friend_list(req.friend_id);
         Ok(())
     }
 
     /// Removes a friend
     pub fn remove_friend(&mut self, user_id: UserId, req: RemoveFriendRequest) -> Result<(), ServerError> {
-        self.data_service.friends_remove(user_id, req.friend_id);
+        self.data_service.friends_remove(user_id.clone(), req.friend_id.clone());
+
+        // We need to refresh both users friends list
+        self.send_friend_list(user_id);
+        self.send_friend_list(req.friend_id);
         Ok(())
     }
 
     /// Blocks a user
     pub fn block_user(&mut self, user_id: UserId, req: BlockUserRequest) -> Result<(), ServerError> {
-        self.data_service.user_blocks_insert(user_id, req.user_id);
+        self.data_service.user_blocks_insert(user_id.clone(), req.user_id.clone());
+
+        // We need to refresh both users friends list
+        self.send_friend_list(user_id.clone());
+        self.send_friend_list(req.user_id);
+
+        // Refresh the block list for the user who blocked the other user
+        self.send_block_list(user_id);
         Ok(())
     }
 
     /// Unblocks a user
     pub fn unblock_user(&mut self, user_id: UserId, req: UnblockUserRequest) -> Result<(), ServerError> {
-        self.data_service.user_blocks_remove(user_id, req.user_id);
+        self.data_service.user_blocks_remove(user_id.clone(), req.user_id);
+        self.send_block_list(user_id);
         Ok(())
     }
 
@@ -246,6 +313,46 @@ where T: Database + Send + Sync + 'static
         }
     }
 
+    fn send_friend_list(&self, user_id: UserId) {
+        match vec_to_json(self.get_friends_list(user_id.clone())) {
+            Ok(friends_list) => {
+                match self.get_socket_id(user_id) {
+                    Ok(socket_id) => {
+                        if let Some(socket) = self.get_socket(socket_id) {
+                            let _= socket.emit(EVENT_RECEIVE_FRIENDS, &friends_list);
+                        }
+                    },
+                    Err(e) => {
+                        error!(?e, "Failed to get socket ID");
+                    }
+                }
+            },
+            Err(e) => {
+                error!(?e, "Failed to serialize friends list");
+            }
+        }
+    }
+
+    fn send_block_list(&self, user_id: UserId) {
+        match vec_to_json(self.data_service.user_blocks_get_blocks_for_user(user_id.clone())) {
+            Ok(blocks_list) => {
+                match self.get_socket_id(user_id) {
+                    Ok(socket_id) => {
+                        if let Some(socket) = self.get_socket(socket_id) {
+                            let _= socket.emit(EVENT_RECEIVE_BLOCKED_USERS, &blocks_list);
+                        }
+                    },
+                    Err(e) => {
+                        error!(?e, "Failed to get socket ID");
+                    }
+                }
+            },
+            Err(e) => {
+                error!(?e, "Failed to serialize blocks list");
+            }
+        }
+    }
+
     /// Whether a room exists or not
     fn room_exists(&self, room_id: RoomId) -> bool {
         let room_id = room_id.as_str();
@@ -253,7 +360,7 @@ where T: Database + Send + Sync + 'static
     }
 
     /// Gets the user ID of the logged in user associated with a socket
-    pub fn get_logged_in_user_id(&self, socket_id: SocketId) -> Option<UserId> {
+    fn get_logged_in_user_id(&self, socket_id: SocketId) -> Option<UserId> {
         self.user_sockets.iter().find_map(|(user_id, id)| {
             if id == &socket_id {
                 Some(user_id.clone())
@@ -264,7 +371,7 @@ where T: Database + Send + Sync + 'static
     }
 
     /// Gets the friends list of a user and their online status
-    pub fn get_friends_list(&self, user_id: UserId) -> Vec<Friend> {
+    fn get_friends_list(&self, user_id: UserId) -> Vec<Friend> {
         let mut friends_list = self.data_service.friends_get(user_id);
         for friend in friends_list.iter_mut() {
             friend.status = self.get_online_status(friend.id.clone());
@@ -274,7 +381,7 @@ where T: Database + Send + Sync + 'static
 }
 
 pub fn listen_for_chat_messages<T: Database + Send + Sync + 'static>(socket_ref: &SocketRef, server: Arc<Mutex<WarhorseServer<T>>>) {
-    socket_ref.on("chat-message", move |socket: SocketRef, Data::<Value>(data)| {
+    socket_ref.on(EVENT_SEND_CHAT_MESSAGE, move |socket: SocketRef, Data::<Value>(data)| {
         async move {
             match SendChatMessage::from_json(data) {
                 Ok(data) => {
@@ -303,7 +410,7 @@ pub fn listen_for_user_login<T: Database + Send + Sync + 'static>(
     socket_ref: &SocketRef,
     server: Arc<Mutex<WarhorseServer<T>>>
 ) {
-    socket_ref.on("auth-login", move |socket: SocketRef, Data::<Value>(data)| {
+    socket_ref.on(EVENT_SEND_USER_LOGIN, move |socket: SocketRef, Data::<Value>(data)| {
         async move {
             match UserLogin::from_json(data) {
                 Ok(data) => {
@@ -330,7 +437,7 @@ pub fn listen_for_user_registration<T: Database + Send + Sync + 'static>(
     socket_ref: &SocketRef,
     server: Arc<Mutex<WarhorseServer<T>>>
 ) {
-    socket_ref.on("auth-register", move |socket: SocketRef, Data::<Value>(data)| {
+    socket_ref.on(EVENT_SEND_USER_REGISTER, move |socket: SocketRef, Data::<Value>(data)| {
         async move {
             match UserRegistration::from_json(data) {
                 Ok(data) => {
@@ -355,7 +462,7 @@ pub fn listen_for_friend_requests<T: Database + Send + Sync + 'static>(
     socket_ref: &SocketRef,
     server: Arc<Mutex<WarhorseServer<T>>>
 ) {
-    socket_ref.on("friend-request", move |socket: SocketRef, Data::<Value>(data)| {
+    socket_ref.on(EVENT_SEND_FRIEND_REQUEST, move |socket: SocketRef, Data::<Value>(data)| {
         async move {
             match FriendRequest::from_json(data) {
                 Ok(data) => {
@@ -372,6 +479,141 @@ pub fn listen_for_friend_requests<T: Database + Send + Sync + 'static>(
                 }
                 Err(e) => {
                     error!(ns = socket.ns(), ?socket.id, ?e, "Failed to parse friend request");
+                }
+            }
+        }
+    });
+}
+
+pub fn listen_for_accept_friend_requests<T: Database + Send + Sync + 'static>(
+    socket_ref: &SocketRef,
+    server: Arc<Mutex<WarhorseServer<T>>>
+) {
+    socket_ref.on(EVENT_SEND_FRIEND_REQUEST_ACCEPT, move |socket: SocketRef, Data::<Value>(data)| {
+        async move {
+            match AcceptFriendRequest::from_json(data) {
+                Ok(data) => {
+                    match server.lock().await.get_logged_in_user_id(socket.id) {
+                        Some(user_id) => {
+                            if let Err(e) = server.lock().await.accept_friend_request(user_id, data) {
+                                error!(ns = socket.ns(), ?socket.id, ?e, "Failed to accept friend request");
+                            }
+                        },
+                        None => {
+                            error!(ns = socket.ns(), ?socket.id, "Failed to get user ID");
+                        }
+                    }
+                },
+                Err(e) => {
+                    error!(ns = socket.ns(), ?socket.id, ?e, "Failed to parse accept friend request");
+                }
+            }
+        }
+    });
+}
+
+pub fn listen_for_reject_friend_requests<T: Database + Send + Sync + 'static>(
+    socket_ref: &SocketRef,
+    server: Arc<Mutex<WarhorseServer<T>>>
+) {
+    socket_ref.on(EVENT_SEND_FRIEND_REQUEST_REJECT, move |socket: SocketRef, Data::<Value>(data)| {
+        async move {
+            match RejectFriendRequest::from_json(data) {
+                Ok(data) => {
+                    match server.lock().await.get_logged_in_user_id(socket.id) {
+                        Some(user_id) => {
+                            if let Err(e) = server.lock().await.reject_friend_request(user_id, data) {
+                                error!(ns = socket.ns(), ?socket.id, ?e, "Failed to reject friend request");
+                            }
+                        },
+                        None => {
+                            error!(ns = socket.ns(), ?socket.id, "Failed to get user ID");
+                        }
+                    }
+                },
+                Err(e) => {
+                    error!(ns = socket.ns(), ?socket.id, ?e, "Failed to parse reject friend request");
+                }
+            }
+        }
+    });
+}
+
+pub fn listen_for_remove_friend<T: Database + Send + Sync + 'static>(
+    socket_ref: &SocketRef,
+    server: Arc<Mutex<WarhorseServer<T>>>
+) {
+    socket_ref.on(EVENT_SEND_FRIEND_REMOVE, move |socket: SocketRef, Data::<Value>(data)| {
+        async move {
+            match RemoveFriendRequest::from_json(data) {
+                Ok(data) => {
+                    match server.lock().await.get_logged_in_user_id(socket.id) {
+                        Some(user_id) => {
+                            if let Err(e) = server.lock().await.remove_friend(user_id, data) {
+                                error!(ns = socket.ns(), ?socket.id, ?e, "Failed to remove friend");
+                            }
+                        },
+                        None => {
+                            error!(ns = socket.ns(), ?socket.id, "Failed to get user ID");
+                        }
+                    }
+                },
+                Err(e) => {
+                    error!(ns = socket.ns(), ?socket.id, ?e, "Failed to parse remove friend request");
+                }
+            }
+        }
+    });
+}
+
+pub fn listen_for_block_user_requests<T: Database + Send + Sync + 'static>(
+    socket_ref: &SocketRef,
+    server: Arc<Mutex<WarhorseServer<T>>>
+) {
+    socket_ref.on(EVENT_SEND_USER_BLOCK, move |socket: SocketRef, Data::<Value>(data)| {
+        async move {
+            match BlockUserRequest::from_json(data) {
+                Ok(data) => {
+                    match server.lock().await.get_logged_in_user_id(socket.id) {
+                        Some(user_id) => {
+                            if let Err(e) = server.lock().await.block_user(user_id, data) {
+                                error!(ns = socket.ns(), ?socket.id, ?e, "Failed to block user");
+                            }
+                        },
+                        None => {
+                            error!(ns = socket.ns(), ?socket.id, "Failed to get user ID");
+                        }
+                    }
+                },
+                Err(e) => {
+                    error!(ns = socket.ns(), ?socket.id, ?e, "Failed to parse block user request");
+                }
+            }
+        }
+    });
+}
+
+pub fn listen_for_unblock_user_requests<T: Database + Send + Sync + 'static>(
+    socket_ref: &SocketRef,
+    server: Arc<Mutex<WarhorseServer<T>>>
+) {
+    socket_ref.on(EVENT_SEND_USER_UNBLOCK, move |socket: SocketRef, Data::<Value>(data)| {
+        async move {
+            match UnblockUserRequest::from_json(data) {
+                Ok(data) => {
+                    match server.lock().await.get_logged_in_user_id(socket.id) {
+                        Some(user_id) => {
+                            if let Err(e) = server.lock().await.unblock_user(user_id, data) {
+                                error!(ns = socket.ns(), ?socket.id, ?e, "Failed to unblock user");
+                            }
+                        },
+                        None => {
+                            error!(ns = socket.ns(), ?socket.id, "Failed to get user ID");
+                        }
+                    }
+                },
+                Err(e) => {
+                    error!(ns = socket.ns(), ?socket.id, ?e, "Failed to parse unblock user request");
                 }
             }
         }
@@ -400,9 +642,16 @@ pub async fn handle_connection<T: Database + Send + Sync + 'static>(
 ) {
 
     info!(ns = socket.ns(), ?socket.id, "Socket.IO connected");
+
     socket.emit("hello", &crate::i18n::hello_message(Language::English)).ok();
+
     listen_for_user_login(&socket, server.clone());
     listen_for_user_registration(&socket, server.clone());
     listen_for_chat_messages(&socket, server.clone());
     listen_for_friend_requests(&socket, server.clone());
+    listen_for_accept_friend_requests(&socket, server.clone());
+    listen_for_reject_friend_requests(&socket, server.clone());
+    listen_for_remove_friend(&socket, server.clone());
+    listen_for_block_user_requests(&socket, server.clone());
+    listen_for_unblock_user_requests(&socket, server.clone());
 }
