@@ -1,10 +1,10 @@
-use std::sync::mpsc;
+use std::sync::{mpsc, Arc, RwLock};
 use clap::Parser;
 use tracing::{error, info};
 use tracing_subscriber::FmtSubscriber;
 use warhorse_client::error::ClientError;
-use warhorse_client::{WarhorseClient, WarhorseClientCommands};
-use warhorse_protocol::{Friend, FriendRequest, Language, LoginUserIdentity, RequestError, UserLogin, UserPartial, UserRegistration};
+use warhorse_client::{WarhorseClient, WarhorseEvent};
+use warhorse_protocol::{FriendRequest, Language, LoginUserIdentity, RequestError, UserLogin, UserPartial};
 
 #[derive(clap::Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -27,75 +27,76 @@ fn main() -> Result<(), ClientError> {
         tx_clone.send(()).ok();
     }).ok();
 
-    let _ = WarhorseClient::new(
-        language,
-        "http://localhost:3000",
-        on_receive_hello,
-        on_receive_login_success,
-        on_receive_request_error,
-        on_receive_friends_list,
-        on_receive_blocked_list,
-        on_receive_friend_requests,
-        on_receive_friend_request_accepted,
-    );
-
+    let client = Arc::new(RwLock::new(WarhorseClient::new(language, "http://localhost:3000")));
     info!("Client is running. Press Ctrl+C to exit.");
 
-    // Wait for shutdown signal
-    rx.recv().unwrap_or(());
-    info!("Shutting down...");
+    // Main event loop
+    loop {
+        // Check for shutdown signal
+        if rx.try_recv().is_ok() {
+            info!("Shutting down...");
+            break;
+        }
+
+        if let Ok(client_write) = client.clone().write() {
+           for event in client_write.pump() {
+                match event {
+                    WarhorseEvent::Hello => {
+                        info!("Received hello from server");
+
+                        // the server has fake data so we can just try logging in as one of the fake users for now
+                        let args = Args::parse();
+                        info!("Using account name: {}", args.account_name);
+                        let password = "password".into();
+
+                        if let Err(e) = client_write.send_user_login_request(UserLogin {
+                            identity: LoginUserIdentity::AccountName(args.account_name.clone()),
+                            password,
+                            language,
+                        }) {
+                            error!("Error sending login request: {:?}", e);
+                        }
+                    }
+                    WarhorseEvent::LoggedIn => {
+                        match Args::parse().account_name.as_str() {
+                            "test" => {
+                                if let Err(e) = client_write.send_friend_request("1") {
+                                    error!("Error sending friend request: {:?}", e);
+                                }
+                            }
+                            "test2" => {
+                                if let Err(e) = client_write.send_friend_request("0") {
+                                    error!("Error sending friend request: {:?}", e);
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                    WarhorseEvent::Error(error_msg) => {
+                        error!("Received error: {}", error_msg);
+                    }
+                    WarhorseEvent::FriendRequests(requests) => {
+                        info!("Received friend requests: {:?}", requests);
+                    }
+                    WarhorseEvent::FriendsList(friends) => {
+                        info!("Received friends list: {:?}", friends);
+                    }
+                    WarhorseEvent::BlockedList(blocked) => {
+                        info!("Received blocked list: {:?}", blocked);
+                    }
+                    WarhorseEvent::FriendRequestAccepted(friend) => {
+                        info!("Received friend request accepted: {:?}", friend);
+                    }
+                    WarhorseEvent::ChatMessage(message) => {
+                        info!("Received chat message: {:?}", message);
+                    }
+                }
+            }
+        }
+
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+
     Ok(())
 }
 
-fn on_receive_hello(client: &mut WarhorseClientCommands, language: Language) {
-    info!("Received hello from server");
-
-    // the server has fake data so we can just try logging in as one of the fake users for now
-    let args = Args::parse();
-    info!("Using account name: {}", args.account_name);
-    let password = "password".into();
-
-    client.user_login = Some(UserLogin {
-        identity: LoginUserIdentity::AccountName(args.account_name.clone()),
-        password,
-        language,
-    });
-}
-
-fn on_receive_login_success(client: &mut WarhorseClientCommands, language: Language) {
-    match Args::parse().account_name.as_str() {
-        "test" => {
-            client.friend_request = Some(FriendRequest {
-                language,
-                friend_id: "1".into(),
-            });
-        }
-        "test2" => {
-            client.friend_request = Some(FriendRequest {
-                language,
-                friend_id: "0".into(),
-            });
-        }
-        _ => {}
-    }
-}
-
-fn on_receive_request_error(error_message: RequestError) {
-    error!("Request error: {:?}", error_message);
-}
-
-fn on_receive_friends_list(friends_list: &Vec<Friend>) {
-    info!("Friends list: {:?}", friends_list);
-}
-
-fn on_receive_blocked_list(blocked_list: &Vec<UserPartial>) {
-    info!("Blocked list: {:?}", blocked_list);
-}
-
-fn on_receive_friend_requests(friend_requests: &Vec<Friend>) {
-    info!("Friend requests: {:?}", friend_requests);
-}
-
-fn on_receive_friend_request_accepted(friend: &Friend) {
-    info!("Friend request accepted: {:?}", friend);
-}

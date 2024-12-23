@@ -259,7 +259,7 @@ pub struct SendChatMessage {
 impl ProtoType for SendChatMessage {}
 
 /// A chat message.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ChatMessage {
     pub display_name: String,
     pub message: String,
