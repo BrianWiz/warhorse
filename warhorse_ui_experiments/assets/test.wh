@@ -1,0 +1,9 @@
+Button {
+    id : String,
+    text: String,
+}
+
+Label {
+    id : String,
+    text: String
+}

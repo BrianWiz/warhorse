@@ -1,0 +1,11 @@
+[package]
+name = "warhorse_ui"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+logos = "0.15.0"
+quote = "1.0.37"
+rust-format = "0.3.4"
+serde_json = "1.0.134"
+serde = { version = "1.0.134", features = ["derive"] }

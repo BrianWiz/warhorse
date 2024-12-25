@@ -30,7 +30,7 @@ impl WarhorseClient {
     pub fn new(
         language: Language,
         connection_string: &str,
-    ) -> Self {
+    ) -> Result<Self, ClientError> {
         let language = language.clone();
         let pending_events = Arc::new(RwLock::new(VecDeque::new()));
 
@@ -219,13 +219,19 @@ impl WarhorseClient {
                     }
                 }
             )
-            .connect()
-            .expect("Connection failed");
+            .connect();
 
-        WarhorseClient {
-            socket_io,
-            language,
-            pending_events,
+        match socket_io {
+            Ok(socket_io) => {
+                Ok(WarhorseClient {
+                    socket_io,
+                    language,
+                    pending_events,
+                })
+            }
+            Err(e) => {
+                Err(ClientError(e.to_string()))
+            }
         }
     }
 

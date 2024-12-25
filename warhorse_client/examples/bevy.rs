@@ -1,7 +1,12 @@
+mod ui;
+
 use std::time::{Duration, Instant};
 use bevy::prelude::*;
+use bevy::reflect::Tuple;
 use warhorse_client::{WarhorseClient, WarhorseEvent};
-use warhorse_protocol::{ChatMessage, Friend, Language, UserId};
+use warhorse_client::error::ClientError;
+use warhorse_protocol::{ChatMessage, Friend, FriendStatus, Language, UserId};
+use crate::ui::WarhorseUIPlugin;
 
 #[derive(Component)]
 pub struct WarhorseFriend(pub Friend);
@@ -30,27 +35,30 @@ pub struct WarhorseNotification {
 #[derive(Resource)]
 pub struct WarhorseLoggedIn;
 
+
 #[derive(Resource)]
 pub struct BevyWarhorseClient {
     warhorse_client: WarhorseClient,
 }
 
 impl BevyWarhorseClient {
-    pub fn new(language: Language, connection_string: &str) -> Self {
+    pub fn new(language: Language, connection_string: &str) -> Result<Self, ClientError> {
         let warhorse_client = WarhorseClient::new(
             language,
             connection_string,
-        );
+        )?;
 
-        Self {
+        Ok(Self {
             warhorse_client,
-        }
+        })
     }
 }
 
 pub struct BevyWarhorsePlugin;
 impl Plugin for BevyWarhorsePlugin {
     fn build(&self, app: &mut App) {
+
+        app.add_plugins(WarhorseUIPlugin);
         app.add_systems(
             PreUpdate,
             (
@@ -58,12 +66,18 @@ impl Plugin for BevyWarhorsePlugin {
                 update_notifications,
             ),
         );
-        app.insert_resource(
-            BevyWarhorseClient::new(
-                Language::English,
-                "http://localhost:3000",
-            )
-        );
+
+        match BevyWarhorseClient::new(
+            Language::English,
+            "http://localhost:3000",
+        ) {
+            Ok(client) => {
+                app.insert_resource(client);
+            }
+            Err(e) => {
+                error!("Error creating Warhorse client: {:?}", e);
+            }
+        }
     }
 }
 
@@ -164,10 +178,11 @@ fn poll_events(
     }
 }
 
+
+
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
         .add_plugins(BevyWarhorsePlugin)
         .run();
 }
-
