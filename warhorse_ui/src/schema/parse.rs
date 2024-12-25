@@ -115,9 +115,16 @@ pub fn generate_rust_code(inputs: &[&str]) -> Result<String, Box<dyn Error>> {
             #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
             pub enum #enum_name {
                 #(#enum_variants),*,
-                /// A container widget that holds other widgets.
-                Container {
+                /// A row widget that holds other widgets stacked vertically.
+                Row {
                     id: String,
+                    align: warhorse_ui::Align,
+                    inner: Vec<Box<Widget>>,
+                },
+                /// A widget that holds other widgets horizontally.
+                Column {
+                    id: String,
+                    align: warhorse_ui::Align,
                     inner: Vec<Box<Widget>>,
                 },
                 /// A widget that repeats the block for each item in a list.
@@ -128,9 +135,40 @@ pub fn generate_rust_code(inputs: &[&str]) -> Result<String, Box<dyn Error>> {
                 pub fn feed_data(&mut self, data: &warhorse_ui::serde_json::Value) {
                     match self {
                         #(#feed_data_match_arms),*,
-                        Self::Container { ref mut id, ref mut inner } => {
+                        Self::Row { ref mut id, ref mut align, ref mut inner } => {
                             if let Some(new_id) = data.get("id").and_then(|v| v.as_str()) {
                                 *id = new_id.to_string();
+                            }
+                            if let Some(new_align) = data.get("align").and_then(|v| v.as_str()) {
+                                *align = match new_align {
+                                    "Align::Start" => warhorse_ui::Align::Start,
+                                    "Align::Center" => warhorse_ui::Align::Center,
+                                    "Align::Stretch" => warhorse_ui::Align::Stretch,
+                                    "Align::End" => warhorse_ui::Align::End,
+                                    _ => warhorse_ui::Align::Start,
+                                };
+                            }
+                            if let Some(arr) = data.get("inner").and_then(|v| v.as_array()) {
+                                inner.clear();
+                                for item in arr {
+                                    let mut child = Self::default();
+                                    child.feed_data(item);
+                                    inner.push(Box::new(child));
+                                }
+                            }
+                        },
+                        Self::Column { ref mut id, ref mut align, ref mut inner } => {
+                            if let Some(new_id) = data.get("id").and_then(|v| v.as_str()) {
+                                *id = new_id.to_string();
+                            }
+                            if let Some(new_align) = data.get("align").and_then(|v| v.as_str()) {
+                                *align = match new_align {
+                                    "Align::Start" => warhorse_ui::Align::Start,
+                                    "Align::Center" => warhorse_ui::Align::Center,
+                                    "Align::Stretch" => warhorse_ui::Align::Stretch,
+                                    "Align::End" => warhorse_ui::Align::End,
+                                    _ => warhorse_ui::Align::Start,
+                                };
                             }
                             if let Some(arr) = data.get("inner").and_then(|v| v.as_array()) {
                                 inner.clear();
@@ -157,8 +195,9 @@ pub fn generate_rust_code(inputs: &[&str]) -> Result<String, Box<dyn Error>> {
 
             impl Default for #enum_name {
                 fn default() -> Self {
-                    Self::Container {
+                    Self::Row {
                         id: String::default(),
+                        align: warhorse_ui::Align::Start,
                         inner: Vec::default(),
                     }
                 }
@@ -507,7 +546,7 @@ mod tests {
     fn test_parse_struct() -> Result<(), Box<dyn Error>> {
         let schema = r#"
             Button { id : Number, text: String }
-            Container {
+            Row {
                 id: Number,
                 children: Button[],
             }
@@ -523,12 +562,12 @@ mod tests {
         assert_eq!(button.fields.get("id"), Some(&ValueKind::Number));
         assert_eq!(button.fields.get("text"), Some(&ValueKind::String));
 
-        let container = &elements[1];
-        assert_eq!(container.name, "Container");
-        assert_eq!(container.fields.len(), 2);
-        assert_eq!(container.fields.get("id"), Some(&ValueKind::Number));
+        let row = &elements[1];
+        assert_eq!(row.name, "Row");
+        assert_eq!(row.fields.len(), 2);
+        assert_eq!(row.fields.get("id"), Some(&ValueKind::Number));
         assert_eq!(
-            container.fields.get("children"),
+            row.fields.get("children"),
             Some(&ValueKind::Array(Box::new(ValueKind::Schema("Button".to_string()))))
         );
 

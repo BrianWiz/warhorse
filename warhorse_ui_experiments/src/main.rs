@@ -2,6 +2,7 @@ include!(concat!(env!("OUT_DIR"), "/generated/warhorse_ui_schema.rs"));
 
 use std::ops::Deref;
 use bevy::prelude::*;
+use warhorse_ui::Align;
 use warhorse_ui::serde_json::json;
 
 #[derive(Component, Clone)]
@@ -61,8 +62,9 @@ pub struct AppWidgets {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let main_menu_ron = r#"
-        Container(
+        Row(
             id: "main-container",
+            align: Center,
             inner: [
                 Label(
                     id: "label",
@@ -81,8 +83,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     "#;
 
     let settings_ron = r#"
-        Container(
+        Row(
             id: "settings-container",
+            align: Center,
             inner: [
                 Label(
                     id: "label",
@@ -101,8 +104,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     "#;
 
     let friends_list_ron = r#"
-        Container(
+        Row(
             id: "friends-list-container",
+            align: Center,
             inner: [
                 Label(
                     id: "label",
@@ -159,9 +163,9 @@ fn setup_ui(
 ) {
     commands.spawn(Camera2d::default());
     hydrate_current_page(
-        &mut commands, 
-        &app_widgets, 
-        &current_page, 
+        &mut commands,
+        &app_widgets,
+        &current_page,
         &mut query
     );
 }
@@ -173,13 +177,40 @@ fn hydrate(
     belongs_to_dataset: Option<String>,
 ) {
     match widget {
-        generated::Widget::Container { id, inner } => {
+        generated::Widget::Row { id, align, inner } => {
             builder.spawn((
                 Identifiable(id.clone()),
                 BelongsToDataSet(belongs_to_dataset),
                 Node {
                     width: Val::Percent(100.0),
                     flex_direction: FlexDirection::Column,
+                    align_items: match align {
+                        Align::Start => AlignItems::FlexStart,
+                        Align::Center => AlignItems::Center,
+                        Align::End => AlignItems::FlexEnd,
+                        _=> AlignItems::Center,
+                    },
+                    ..default()
+                }
+            )).with_children(|builder| {
+                for child in inner {
+                    hydrate(builder, child, data, None);
+                }
+            });
+        }
+        generated::Widget::Column { id, align, inner } => {
+            builder.spawn((
+                Identifiable(id.clone()),
+                BelongsToDataSet(belongs_to_dataset),
+                Node {
+                    width: Val::Percent(100.0),
+                    flex_direction: FlexDirection::Row,
+                    align_items: match align {
+                        Align::Start => AlignItems::FlexStart,
+                        Align::Center => AlignItems::Center,
+                        Align::End => AlignItems::FlexEnd,
+                        _=> AlignItems::Center,
+                    },
                     ..default()
                 }
             )).with_children(|builder| {
@@ -217,9 +248,9 @@ fn hydrate(
                         let mut block = block.clone();
                         block.feed_data(item);
                         hydrate(
-                            builder, 
-                            &block, 
-                            data, 
+                            builder,
+                            &block,
+                            data,
                             Some(key.clone())
                         );
                     }
@@ -305,9 +336,9 @@ fn page_swapper(
 ) {
     if current_page.is_changed() {
         hydrate_current_page(
-            &mut commands, 
-            &app_widgets, 
-            &current_page, 
+            &mut commands,
+            &app_widgets,
+            &current_page,
             &mut query
         );
     }
@@ -333,7 +364,8 @@ fn hydrate_current_page(
     commands.spawn((
         RootNode,
         Node {
-            width: Val::Auto,
+            width: Val::Percent(100.0),
+            height: Val::Percent(100.0),
             ..default()
         }
     )).with_children(|builder| {

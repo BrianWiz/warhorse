@@ -5,6 +5,15 @@ use std::path::PathBuf;
 
 pub use serde_json;
 
+/// Alignment of children in a column or row widget.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub enum Align {
+    Start,
+    Center,
+    End,
+    Stretch,
+}
+
 /// A macro to generate Rust code from schema files and save it to the output directory.
 #[macro_export]
 macro_rules! generate_schema_code {
