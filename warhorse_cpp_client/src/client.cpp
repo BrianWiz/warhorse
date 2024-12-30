@@ -5,10 +5,12 @@
 
 WarhorseClient::WarhorseClient(const std::string& connection_string) {
 
+    // State
     logged_in = false;
     received_hello = false;
     sent_login_request = false;
 
+    // Callbacks
     on_hello = nullptr;
     on_logged_in = nullptr;
     on_error = nullptr;
