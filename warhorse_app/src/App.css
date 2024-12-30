@@ -70,6 +70,10 @@ h1 {
   color: var(--primary-color);
 }
 
+h2 {
+  padding-top: var(--default-padding);
+}
+
 .row {
   display: flex;
   flex-direction: column;
@@ -86,7 +90,6 @@ h1 {
   left: 50%;
   transform: translate(-50%, -50%);
   width: var(--modal-width);
-  padding: var(--default-padding);
   background-color: var(--background-color);
   border: var(--border-width) solid var(--third-color); 
   border-radius: var(--border-radius);
@@ -97,8 +100,7 @@ h1 {
 
 .modal-content {
   flex: 1;
-  padding-top: var(--default-padding);
-  padding-bottom: var(--default-padding);
+  padding: var(--default-padding);
 }
 
 .modal .modal-buttons {
@@ -108,7 +110,7 @@ h1 {
   gap: var(--default-padding);
   margin-top: var(--default-padding);
   border-top: 1px solid var(--third-color);
-  padding-top: var(--default-padding);
+  padding: var(--default-padding);
   width: 100%;
 }
 

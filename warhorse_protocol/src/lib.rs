@@ -265,7 +265,7 @@ impl ProtoType for SendChatMessage {}
 pub struct ChatMessage {
     pub display_name: String,
     pub message: String,
-    pub time: String,
+    pub time: u32,
 }
 
 impl ProtoType for ChatMessage {}

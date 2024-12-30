@@ -179,12 +179,10 @@ impl WarhorseClient {
                         match payload {
                             Payload::Text(text) => {
                                 if let Some(first) = text.first() {
-                                    match json_to_vec::<ChatMessage>(first.clone()) {
-                                        Ok(messages) => {
-                                            for message in messages {
-                                                if let Ok(mut event_queue) = pending_events_clone.write() {
-                                                    event_queue.push_back(WarhorseEvent::ChatMessage(message));
-                                                }
+                                    match ChatMessage::from_json(first.clone()) {
+                                        Ok(chat_message) => {
+                                            if let Ok(mut event_queue) = pending_events_clone.write() {
+                                                event_queue.push_back(WarhorseEvent::ChatMessage(chat_message));
                                             }
                                         }
                                         Err(e) => {
@@ -244,6 +242,16 @@ impl WarhorseClient {
             Ok(())
         } else {
             Err(ClientError("Failed to queue friend request".to_string()))
+        }
+    }
+
+    pub fn send_chat_message(&self, chat_message: SendChatMessage) -> Result<(), ClientError> {
+        let json = chat_message.to_json()?;
+        if let Ok(mut messages) = self.pending_messages.write() {
+            messages.push_back((EVENT_SEND_CHAT_MESSAGE.to_string(), json));
+            Ok(())
+        } else {
+            Err(ClientError("Failed to queue chat message".to_string()))
         }
     }
 

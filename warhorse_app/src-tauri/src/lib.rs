@@ -9,6 +9,8 @@ use tracing::{error, info};
 use warhorse_client::*;
 use warhorse_client::warhorse_protocol::*;
 
+type AppState<'a> = tauri::State<'a, Arc<Mutex<WarhorseApp>>>;
+
 struct WarhorseApp {
     client: RwLock<WarhorseClient>,
     running: Arc<AtomicBool>,
@@ -54,6 +56,13 @@ impl WarhorseApp {
         match app_handle.emit("received_logged_in", true) {
             Ok(_) => info!("Successfully emitted received_logged_in event"),
             Err(e) => error!("Error emitting received_logged_in event: {} {:?}", e, e),
+        }
+    }
+    
+    fn emit_chat_message(&self, app_handle: &tauri::AppHandle, message: ChatMessage) {
+        match app_handle.emit("chat_message", message) {
+            Ok(_) => info!("Successfully emitted chat_message event"),
+            Err(e) => error!("Error emitting chat_message event: {} {:?}", e, e),
         }
     }
 
@@ -105,6 +114,7 @@ impl WarhorseApp {
                 },
                 WarhorseEvent::ChatMessage(message) => {
                     info!("Received chat-message event {:?}", message);
+                    self.emit_chat_message(app_handle, message);
                 },
             }
         }
@@ -112,7 +122,7 @@ impl WarhorseApp {
 }
 
 #[tauri::command]
-fn get_friends(app: tauri::State<'_, Arc<Mutex<WarhorseApp>>>) -> Result<Vec<Friend>, String> {
+fn get_friends(app: AppState) -> Result<Vec<Friend>, String> {
     if let Ok(app) = app.lock() {
         Ok(app.get_friends())
     } else {
@@ -121,7 +131,7 @@ fn get_friends(app: tauri::State<'_, Arc<Mutex<WarhorseApp>>>) -> Result<Vec<Fri
 }
 
 #[tauri::command]
-fn received_hello(app: tauri::State<'_, Arc<Mutex<WarhorseApp>>>) -> Result<bool, String> {
+fn received_hello(app: AppState) -> Result<bool, String> {
     if let Ok(app) = app.lock() {
         Ok(app.received_hello())
     } else {
@@ -130,7 +140,7 @@ fn received_hello(app: tauri::State<'_, Arc<Mutex<WarhorseApp>>>) -> Result<bool
 }
 
 #[tauri::command]
-fn received_logged_in(app: tauri::State<'_, Arc<Mutex<WarhorseApp>>>) -> Result<bool, String> {
+fn received_logged_in(app: AppState) -> Result<bool, String> {
     if let Ok(app) = app.lock() {
         Ok(app.received_logged_in())
     } else {
@@ -139,8 +149,34 @@ fn received_logged_in(app: tauri::State<'_, Arc<Mutex<WarhorseApp>>>) -> Result<
 }
 
 #[tauri::command]
+fn send_chat_message(
+    app: AppState<'_>,
+    message: String,
+) -> Result<(), String> {
+    if let Ok(app) = app.lock() {
+        let client = app.client.write().unwrap();
+        match client.send_chat_message(SendChatMessage {
+            language: Language::English,
+            channel: ChatChannel::Room("general".to_string()),
+            message,
+        }) {
+            Ok(_) => {
+                info!("Sent chat-message");
+                Ok(())
+            }
+            Err(e) => {
+                error!("Error sending chat-message: {}", e);
+                Err(e.to_string())
+            }
+        }
+    } else {
+        Err("Failed to lock app state".to_string())
+    }
+}
+
+#[tauri::command]
 async fn login(
-    app: tauri::State<'_, Arc<Mutex<WarhorseApp>>>,
+    app: AppState<'_>,
     username: String,
     password: String,
 ) -> Result<(), String> {
@@ -198,6 +234,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_friends,
             login,
+            send_chat_message,
             received_hello,
             received_logged_in
         ])

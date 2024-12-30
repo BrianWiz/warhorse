@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 warhorse_protocol = { path = "../warhorse_protocol" }
 
+chrono = { version = "0.4.39"}
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
 axum = "0.7.9"
 socketioxide = "0.15.1"

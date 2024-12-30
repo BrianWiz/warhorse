@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{sync::Arc, time::Instant};
 use std::collections::HashMap;
 use tokio::sync::Mutex;
 use serde_json::Value;
@@ -159,7 +159,21 @@ where T: Database + Send + Sync + 'static
 
     /// Sends a private message to a specific user
     fn send_chat_message(&self, sender_id: UserId, message: SendChatMessage) -> Result<(), ServerError> {
-        let serialized_message = message.to_json()?;
+
+        let display_name = match self.data_service.users_get(sender_id.clone()) {
+            Some(user) => user.display_name.clone(),
+            None => {
+                error!("User does not exist: {}", sender_id);
+                return Err(format!("{} does not exist", sender_id))?;
+            }
+        };
+
+        let serialized_message = ChatMessage {
+            display_name,
+            message: message.message.clone(),
+            time: chrono::Utc::now().timestamp() as u32,
+        }.to_json()?;
+
         match message.channel {
             ChatChannel::PrivateMessage(user_id) => {
                 if self.are_friends(sender_id.clone(), user_id.clone()) {
@@ -433,14 +447,14 @@ fn listen_for_chat_messages<T: Database + Send + Sync + 'static>(socket_ref: &So
         async move {
             match SendChatMessage::from_json(data) {
                 Ok(data) => {
-                    match server.lock().await.get_logged_in_user_id(socket.id) {
-                        Some(sender_id) => {
-                            if let Err(e) = server.lock().await.send_chat_message(sender_id, data) {
-                                error!(ns = socket.ns(), ?socket.id, ?e, "Failed to send chat message");
-                            }
-                        },
-                        None => {
-                            error!(ns = socket.ns(), ?socket.id, "Failed to get user ID");
+                    let sender_id = {
+                        let server_guard = server.lock().await;
+                        server_guard.get_logged_in_user_id(socket.id)
+                    };
+
+                    if let Some(sender_id) = sender_id {
+                        if let Err(e) = server.lock().await.send_chat_message(sender_id, data) {
+                            info!(ns = socket.ns(), ?socket.id, ?e, "Failed to send chat message");
                         }
                     }
                 },
@@ -725,6 +739,9 @@ pub async fn handle_connection<T: Database + Send + Sync + 'static>(
     info!(ns = socket.ns(), ?socket.id, "Socket.IO connected");
 
     socket.emit(EVENT_RECEIVE_HELLO, &crate::i18n::hello_message(Language::English)).ok();
+
+    // add them to the general chat room
+    socket.join("general").ok();
 
     listen_for_user_login(&socket, server.clone());
     listen_for_user_registration(&socket, server.clone());
