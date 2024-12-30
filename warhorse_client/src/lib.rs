@@ -4,7 +4,8 @@ use std::collections::VecDeque;
 use std::sync::{Arc, RwLock};
 use rust_socketio::client::Client;
 use rust_socketio::{ClientBuilder, Payload};
-use tracing::{error};
+use serde_json::json;
+use tracing::{error, info};
 
 use warhorse_protocol::*;
 use crate::error::ClientError;
@@ -19,7 +20,6 @@ pub enum WarhorseEvent {
     Error(String),
     FriendRequests(Vec<Friend>),
     FriendsList(Vec<Friend>),
-    BlockedList(Vec<Friend>),
     FriendRequestAccepted(Friend),
     ChatMessage(ChatMessage),
 }
@@ -27,7 +27,10 @@ pub enum WarhorseEvent {
 pub struct WarhorseClient {
     language: Language,
     socket_io: Client,
+    // events we've received but haven't processed yet
     pub pending_events: Arc<RwLock<VecDeque<WarhorseEvent>>>,
+    // messages we've queued to send but haven't yet
+    pending_messages: Arc<RwLock<VecDeque<(String, serde_json::Value)>>>
 }
 
 impl WarhorseClient {
@@ -104,32 +107,6 @@ impl WarhorseClient {
                                         }
                                         Err(e) => {
                                             error!("Failed to parse friends list: {:?}", e);
-                                        }
-                                    }
-                                }
-                            }
-                            _ => {
-                                error!("Unexpected payload: {:?}", payload);
-                            }
-                        }
-                    }
-                }
-            )
-            .on(EVENT_RECEIVE_BLOCKED_USERS,
-                {
-                    let pending_events_clone = pending_events.clone();
-                    move |payload, _socket| {
-                        match payload {
-                            Payload::Text(text) => {
-                                if let Some(first) = text.first() {
-                                    match json_to_vec::<Friend>(first.clone()) {
-                                        Ok(blocked_list) => {
-                                            if let Ok(mut event_queue) = pending_events_clone.write() {
-                                                event_queue.push_back(WarhorseEvent::BlockedList(blocked_list));
-                                            }
-                                        }
-                                        Err(e) => {
-                                            error!("Failed to parse blocked list: {:?}", e);
                                         }
                                     }
                                 }
@@ -231,6 +208,7 @@ impl WarhorseClient {
                     socket_io,
                     language,
                     pending_events,
+                    pending_messages: Arc::new(RwLock::new(VecDeque::new())),
                 })
             }
             Err(e) => {
@@ -240,34 +218,50 @@ impl WarhorseClient {
     }
 
     pub fn send_user_login_request(&self, user_login: UserLogin) -> Result<(), ClientError> {
-        if let Err(e) = self.socket_io
-            .emit(EVENT_SEND_USER_LOGIN, user_login.to_json()?) {
-            return Err(ClientError(e.to_string()));
+        let json = user_login.to_json()?;
+        if let Ok(mut messages) = self.pending_messages.write() {
+            messages.push_back((EVENT_SEND_USER_LOGIN.to_string(), json));
+            Ok(())
+        } else {
+            Err(ClientError("Failed to queue login request".to_string()))
         }
-        Ok(())
     }
 
     pub fn send_user_registration_request(&self, user_registration: UserRegistration) -> Result<(), ClientError> {
-        if let Err(e) = self.socket_io
-            .emit(EVENT_SEND_USER_REGISTER, user_registration.to_json()?) {
-            return Err(ClientError(e.to_string()));
+        let json = user_registration.to_json()?;
+        if let Ok(mut messages) = self.pending_messages.write() {
+            messages.push_back((EVENT_SEND_USER_REGISTER.to_string(), json));
+            Ok(())
+        } else {
+            Err(ClientError("Failed to queue registration request".to_string()))
         }
-        Ok(())
     }
 
     pub fn send_friend_request(&self, user_id: &str) -> Result<(), ClientError> {
-        if let Err(e) = self.socket_io
-            .emit(EVENT_SEND_FRIEND_REQUEST, FriendRequest {
-                language: self.language.clone(),
-                friend_id: user_id.to_string(),
-            }.to_json()?) {
-            return Err(ClientError(e.to_string()));
+        let json = json!(user_id);
+        if let Ok(mut messages) = self.pending_messages.write() {
+            messages.push_back((EVENT_SEND_FRIEND_REQUEST.to_string(), json));
+            Ok(())
+        } else {
+            Err(ClientError("Failed to queue friend request".to_string()))
         }
-        Ok(())
     }
 
     pub fn pump(&self) -> Vec<WarhorseEvent> {
         let mut events = Vec::new();
+
+        // send any pending messages
+        if let Ok(mut messages) = self.pending_messages.write() {
+            while let Some((event, json)) = messages.pop_front() {
+                match self.socket_io.emit(event, json) {
+                    Ok(_) => {}
+                    Err(e) => {
+                        error!("Failed to send message: {:?}", e);
+                    }
+                }
+            }
+        }
+
         if let Ok(mut event_queue) = self.pending_events.write() {
             while let Some(event) = event_queue.pop_front() {
                 events.push(event);

@@ -1,24 +1,45 @@
-use bevy::prelude::App;
-
 mod ui;
 
 use bevy::prelude::*;
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+
+fn main() {
     App::new()
+        // plugins
         .add_plugins(DefaultPlugins)
+        .add_plugins(bevy_egui::EguiPlugin)
         .add_plugins(ui::WarhorseUIPlugin)
-        .add_systems(
-            Startup,
-            spawn_camera,
-        )
+        // systems
+        .add_systems(Startup, spawn_camera)
         .run();
-    Ok(())
 }
 
 fn spawn_camera(mut commands: Commands) {
     commands.spawn(Camera2d::default());
 }
+
+
+// use bevy::prelude::App;
+//
+// mod ui;
+//
+// use bevy::prelude::*;
+//
+// fn main() -> Result<(), Box<dyn std::error::Error>> {
+//     App::new()
+//         .add_plugins(DefaultPlugins)
+//         .add_plugins(ui::WarhorseUIPlugin)
+//         .add_systems(
+//             Startup,
+//             spawn_camera,
+//         )
+//         .run();
+//     Ok(())
+// }
+//
+// fn spawn_camera(mut commands: Commands) {
+//     commands.spawn(Camera2d::default());
+// }
 
 
 // mod another;
@@ -449,4 +470,3 @@ fn spawn_camera(mut commands: Commands) {
 //         ]
 //     })
 // }
-

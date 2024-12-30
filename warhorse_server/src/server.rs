@@ -465,7 +465,7 @@ fn listen_for_user_login<T: Database + Send + Sync + 'static>(
                             info!(ns = socket.ns(), ?socket.id, "User logged in");
                         },
                         Err(e) => {
-                            error!(ns = socket.ns(), ?socket.id, ?e, "Failed to log in user");
+                            info!(ns = socket.ns(), ?socket.id, ?e, "Failed to log in user");
                             match RequestError(e.0).to_json() {
                                 Ok(json) => {
                                     match socket.emit(EVENT_RECEIVE_ERROR, &json) {

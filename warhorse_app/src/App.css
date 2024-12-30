@@ -1,0 +1,344 @@
+:root {
+  --primary-color: #ea00ff;
+  --primary-color-dark: #8e009b;
+  --secondary-color: #ded16d;
+  --secondary-color-dark: #262418;
+  --third-color: #00e5ff;
+  --third-color-dark: #00363d;
+
+  --info-color: #00ffff; 
+  --font-color: white;
+  --font-color-dark: #000000;
+  --background-color: #020202;
+  --background-light: #dbdbdb;
+  --border-color: #333333;
+  
+  /* Spacing */
+  --sidebar-width: 200px;
+  --form-width: 300px;
+  --default-padding: 10px;
+  --border-width: 1px;
+  --header-height: 60px;
+  --modal-width: 600px;
+  
+  /* Decorate */
+  --border-radius: 2px;
+  --primary-glow: 0 0 15px var(--primary-color);
+  --secondary-glow: 0 0 15px var(--secondary-color);
+  --third-glow: 0 0 15px var(--third-color);
+}
+
+* {
+  font-family: 'Courier New', Courier, monospace;
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body {
+  height: 100%;
+  overflow: hidden;
+  margin: 0;
+}
+
+body {
+  color: var(--font-color);
+  background-color: var(--background-color);
+}
+
+main {
+  height: calc(100vh - var(--default-padding) * 2);
+  border: var(--border-width) solid var(--primary-color);
+  margin: var(--default-padding);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+header {
+  border-bottom: var(--border-width) solid var(--primary-color);
+  padding: var(--default-padding);
+  max-height: var(--header-height);
+}
+
+h1 {
+  margin: 0;
+  padding: 0;
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  color: var(--primary-color);
+}
+
+.row {
+  display: flex;
+  flex-direction: column;
+  flex-wrap: wrap;
+}
+
+/* ============================= */
+/* Modal Styling */
+/* ============================= */
+
+.modal {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: var(--modal-width);
+  padding: var(--default-padding);
+  background-color: var(--background-color);
+  border: var(--border-width) solid var(--third-color); 
+  border-radius: var(--border-radius);
+  box-shadow: var(--third-glow);
+  z-index: 1000;
+  justify-items: center;
+}
+
+.modal-content {
+  flex: 1;
+  padding-top: var(--default-padding);
+  padding-bottom: var(--default-padding);
+}
+
+.modal .modal-buttons {
+  flex: 1;
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--default-padding);
+  margin-top: var(--default-padding);
+  border-top: 1px solid var(--third-color);
+  padding-top: var(--default-padding);
+  width: 100%;
+}
+
+/* ============================= */
+/* Flexbox utilities */
+/* ============================= */
+
+.center-things {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+/* ============================= */
+/* Styling for forms */
+/* ============================= */
+
+form {
+  width: var(--form-width);
+  display: flex;
+  flex-direction: column;
+  flex-wrap: wrap;
+  justify-content: center;
+  text-align: center;
+  row-gap: var(--default-padding);
+  column-gap: var(--default-padding);
+}
+
+label {
+  font-weight: bold;
+  margin-top: var(--default-padding);
+}
+
+input {
+  background-color: var(--background-light);
+  border: var(--border-width) solid var(--primary-color);
+  color: var(--font-color-dark);
+  font-weight: bold;
+  padding: var(--default-padding);
+  font-family: 'Courier New', Courier, monospace;
+  outline: none;
+}
+
+input:focus {
+  box-shadow: var(--primary-glow);
+}
+
+/* ============================= */
+/* Styling for buttons */
+/* ============================= */
+
+button {
+  padding: var(--default-padding);
+  border-radius: var(--border-radius);
+  background-color: var(--background-color);
+  border: var(--border-width) solid var(--primary-color);
+  color: var(--primary-color);
+  cursor: pointer;
+  font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: var(--border-width);
+}
+
+button:hover {
+  background-color: var(--primary-color);
+  box-shadow: var(--primary-glow);
+  color: var(--background-color);
+}
+
+button.secondary {
+  border: var(--border-width) solid var(--secondary-color);
+  color: var(--secondary-color);
+}
+
+button.secondary:hover {
+  background-color: var(--secondary-color);
+  color: var(--background-color);
+  box-shadow: var(--secondary-glow);
+}
+
+/* Adds a blinking cursor effect to focused inputs */
+input:focus::after {
+  content: '_';
+  animation: blink 1s step-end infinite;
+}
+
+@keyframes blink {
+  50% { opacity: 0; }
+}
+
+.container {
+  flex: 1;
+  display: flex;
+  height: 100%;
+}
+
+.sidebar {
+  width: var(--sidebar-width);
+  border-right: var(--border-width) solid var(--primary-color);
+  padding: var(--default-padding);
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.content {
+  flex: 1;
+  padding: var(--default-padding);
+  padding-right: 0;
+  height: 100%;
+  position: relative;
+}
+
+.content h3 {
+  padding-bottom: var(--default-padding);
+}
+
+/* ============================= */
+/* Chat Styling */
+/* ============================= */
+
+.chat {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end; /* Ensures the form is always at the bottom */
+  flex: 1;
+  height: 100%;
+}
+
+.chat .messages-container {
+  flex-grow: 1; /* Allow messages container to grow */
+  overflow-y: auto; /* Enables vertical scrolling */
+  padding-bottom: var(--default-padding);
+  padding-top: var(--default-padding);
+  height: 0;
+}
+
+.chat form {
+  display: flex;
+  flex-direction: row;
+  margin-top: var(--default-padding);
+  margin-bottom: calc(var(--default-padding) * 3);
+  padding-right: var(--default-padding);
+  width: 100%;
+  gap: 0; /* Adds space between the form elements */
+}
+
+.chat form input {
+  flex: 1;
+  padding: var(--default-padding);
+}
+
+.chat form button {
+  padding: var(--default-padding);
+}
+
+.chat-message .author {
+  font-weight: bold;
+  color: var(--primary-color);
+}
+
+.chat-message .timestamp {
+  font-size: 0.8em;
+  color: var(--secondary-color);
+}
+
+.chat-message .message {
+  scroll-snap-align: start;
+  margin-top: var(--default-padding);
+  margin-bottom: var(--default-padding);
+  padding-bottom: var(--default-padding);
+  border-bottom: var(--border-width) solid var(--secondary-color);
+}
+
+.chat-message:last-child .message {
+  border-bottom: none;
+}
+
+/* ============================= */
+/* Friend List Styling */
+/* ============================= */
+
+.friend-list {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.friend-list-content {
+  flex-grow: 1;
+  overflow-y: auto;
+}
+
+.add-friend-container {
+  margin-top: auto;
+  width: 100%;
+  display: flex;
+  justify-content: center;
+}
+
+.add-friend-button {
+  width: 100%; 
+  display: block;
+}
+
+.add-friend-button:hover {
+  background-color: var(--background-color);
+}
+
+/* ============================= */
+/* Scrollbar Styling */
+/* ============================= */
+
+::-webkit-scrollbar {
+  width: 12px; 
+  height: 12px; /* Height of the horizontal scrollbar */
+}
+
+::-webkit-scrollbar-track {
+  background: var(--background-color);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--primary-color);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--primary-color);
+}
+
+::-webkit-scrollbar-corner {
+  background: #f1f1f1;
+}

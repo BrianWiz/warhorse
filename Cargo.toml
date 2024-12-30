@@ -1,5 +1,5 @@
 [workspace]
-members=["warhorse_client", "warhorse_cpp", "warhorse_protocol", "warhorse_server", "warhorse_ui", "warhorse_ui_experiments"]
+members=["warhorse_app/src-tauri", "warhorse_client", "warhorse_cpp", "warhorse_protocol", "warhorse_server", "warhorse_ui", "warhorse_ui_experiments"]
 resolver = "2"
 
 [workspace.dependencies]

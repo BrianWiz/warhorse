@@ -166,6 +166,7 @@ pub enum FriendStatus {
     Online,
     Offline,
     PendingRequest,
+    Blocked,
 }
 
 /// A friend of a user
