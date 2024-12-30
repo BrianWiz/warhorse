@@ -11,10 +11,6 @@
   - attach arbitrary data like player scores
   - game session search
 
-## Compiling & Running
-- in one tab: `cargo run horse_server`
-- in another tab: `cargo run horse_client`
-
 # CRATES (all highly WIP)
 ## warhorse_client
 The Rust client. It contains an example of a simple client that connects to the server and sends a message.
