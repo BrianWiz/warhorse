@@ -1,7 +1,9 @@
 # Warhorse
 
 ## Planned Features (for now)
-- Bevy client 
+- Rust client
+  - Bevy example frontend
+- C++ client
 - separation of account name and display name
 - live friends list update including user online status/presence
 - real-time chat with private messages and rooms (channels)
