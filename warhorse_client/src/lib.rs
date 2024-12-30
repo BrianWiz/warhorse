@@ -1,12 +1,16 @@
 pub mod error;
 
 use std::collections::VecDeque;
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, RwLock};
 use rust_socketio::client::Client;
-use rust_socketio::{ClientBuilder, Payload, Socket};
-use tracing::{error, info};
+use rust_socketio::{ClientBuilder, Payload};
+use tracing::{error};
+
 use warhorse_protocol::*;
 use crate::error::ClientError;
+
+// re-exports
+pub use warhorse_protocol;
 
 #[derive(Clone)]
 pub enum WarhorseEvent {

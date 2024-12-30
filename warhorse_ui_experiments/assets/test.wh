@@ -7,3 +7,8 @@ Label {
     id : String,
     text: String
 }
+
+PressableContainer {
+    id : String,
+    inner: Widget[]
+}

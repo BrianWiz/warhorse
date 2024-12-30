@@ -91,11 +91,8 @@ pub fn generate_rust_code(inputs: &[&str]) -> Result<String, Box<dyn Error>> {
                 ValueKind::Array(_) => {
                     field_updates.push(quote! {
                         if let Some(arr) = data.get(#field_name).and_then(|v| v.as_array()) {
-                            #field_ident.clear();
-                            for item in arr {
-                                let mut child = Self::default();
+                            for (child, item) in #field_ident.iter_mut().zip(arr) {
                                 child.feed_data(item);
-                                #field_ident.push(Box::new(child));
                             }
                         }
                     });
@@ -179,12 +176,11 @@ pub fn generate_rust_code(inputs: &[&str]) -> Result<String, Box<dyn Error>> {
                                 }
                             }
                         },
-                        Self::ForEach(ref key, block) => {
+                        Self::ForEach(ref key, ref mut block) => {
                             if let Some(data) = data.get(key.as_str()) {
                                 if let Some(items) = data.as_array() {
-                                    for item in items {
-                                        let mut block = block.clone();
-                                        block.feed_data(item);
+                                    if let Some(first_item) = items.first() {
+                                        block.feed_data(first_item);
                                     }
                                 }
                             }

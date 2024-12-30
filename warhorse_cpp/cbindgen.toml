@@ -1,0 +1,20 @@
+language = "C++"
+include_guard = "WARHORSE_H"
+namespaces = ["warhorse"]
+sys_includes = ["cstddef", "cstdint"]
+no_includes = true
+style = "type"
+
+[defines]
+"target_os = windows" = "WARHORSE_WINDOWS"
+
+[export]
+prefix = ""
+include = [
+    "WarhorseEventType",
+    "WarhorseEventData",
+    "WarhorseClientHandle"
+]
+
+[export.rename]
+"WarhorseClientHandle" = "WarhorseClientHandle"

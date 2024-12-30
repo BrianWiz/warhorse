@@ -1,0 +1,17 @@
+[package]
+name = "warhorse_cpp"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+warhorse_client = { path = "../warhorse_client" }
+serde_json = "1.0.134"
+serde = { version = "1.0.217", features = ["derive"] }
+tracing = "0.1.41"
+tracing-subscriber = "0.3.19"
+
+[build-dependencies]
+cbindgen = "0.27.0"

@@ -107,6 +107,7 @@ pub enum Language {
 
 impl ProtoType for Language {}
 
+
 /// Represents a user in the system, but with sensitive information removed.
 /// And options to reduce the amount of data/sensitive info sent depending on the context.
 /// Regardless, we never include the password
