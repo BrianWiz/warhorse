@@ -92,23 +92,20 @@ h2 {
   width: var(--modal-width);
   background-color: var(--background-color);
   border: var(--border-width) solid var(--third-color); 
-  border-radius: var(--border-radius);
   box-shadow: var(--third-glow);
   z-index: 1000;
   justify-items: center;
 }
 
 .modal-content {
-  flex: 1;
   padding: var(--default-padding);
 }
 
-.modal .modal-buttons {
-  flex: 1;
+.modal-buttons {
   display: flex;
   justify-content: flex-end;
   gap: var(--default-padding);
-  margin-top: var(--default-padding);
+  margin: var(--default-padding);
   border-top: 1px solid var(--third-color);
   padding: var(--default-padding);
   width: 100%;

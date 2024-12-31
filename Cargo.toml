@@ -1,5 +1,5 @@
 [workspace]
-members=["warhorse_app/src-tauri", "warhorse_client", "warhorse_cpp", "warhorse_protocol", "warhorse_server", "warhorse_ui", "warhorse_ui_experiments"]
+members=["warhorse_client", "warhorse_cpp", "warhorse_protocol", "warhorse_server", "warhorse_app"]
 resolver = "2"
 
 [workspace.dependencies]
@@ -8,3 +8,15 @@ serde_json = "1.0.134"
 tokio = "1.42.0"
 tracing = "0.1.41"
 tracing-subscriber = "0.3.19"
+
+[profile]
+
+[profile.wasm-dev]
+inherits = "dev"
+opt-level = 1
+
+[profile.server-dev]
+inherits = "dev"
+
+[profile.android-dev]
+inherits = "dev"

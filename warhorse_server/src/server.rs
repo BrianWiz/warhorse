@@ -434,7 +434,7 @@ where T: Database + Send + Sync + 'static
         let mut friends_list = self.data_service.friends_get(user_id);
         for friend in friends_list.iter_mut() {
             // if they're not a pending friend request, we want to include their online status
-            if matches!(friend.status, FriendStatus::PendingRequest) {
+            if matches!(friend.status, FriendStatus::InviteSent) {
                 friend.status = self.get_online_status(friend.id.clone());
             }
         }

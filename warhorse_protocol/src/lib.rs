@@ -1,5 +1,9 @@
 pub mod error;
 
+use std::collections::HashMap;
+use std::hash::Hash;
+use std::path::Display;
+
 use serde::{Deserialize, Serialize};
 use serde::de::DeserializeOwned;
 use serde_json::Value;
@@ -161,16 +165,35 @@ pub struct RequestError(pub String);
 impl ProtoType for RequestError {}
 
 /// The online status of a friend
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize, Deserialize)]
 pub enum FriendStatus {
     Online,
     Offline,
+    InviteSent,
     PendingRequest,
     Blocked,
 }
 
+impl std::fmt::Display for FriendStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            FriendStatus::Online => write!(f, "Online"),
+            FriendStatus::Offline => write!(f, "Offline"),
+            FriendStatus::InviteSent => write!(f, "Invite Sent"),
+            FriendStatus::PendingRequest => write!(f, "Pending Request"),
+            FriendStatus::Blocked => write!(f, "Blocked"),
+        }
+    }
+}
+
+impl Hash for FriendStatus {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.to_string().hash(state);
+    }
+}
+
 /// A friend of a user
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Friend {
     pub id: String,
     pub display_name: String,
@@ -261,7 +284,7 @@ pub struct SendChatMessage {
 impl ProtoType for SendChatMessage {}
 
 /// A chat message.
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct ChatMessage {
     pub display_name: String,
     pub message: String,
@@ -270,3 +293,12 @@ pub struct ChatMessage {
 
 impl ProtoType for ChatMessage {}
 
+pub fn categorize_friends(friends: Vec<Friend>) -> HashMap<FriendStatus, Vec<Friend>> {
+    let mut categorized = HashMap::new();
+    for friend in friends {
+        let status = friend.status;
+        let list = categorized.entry(status).or_insert_with(Vec::new);
+        list.push(friend);
+    }
+    categorized
+}

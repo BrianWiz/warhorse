@@ -284,7 +284,7 @@ fn friend_button(friend: &Friend, builder: &mut ChildBuilder) {
                 FriendStatus::Offline => {
                     parent.spawn(Text::new("Offline"));
                 }
-                FriendStatus::PendingRequest => {
+                FriendStatus::InviteSent => {
                     parent.spawn(Text::new("Pending request"));
                 }
             }

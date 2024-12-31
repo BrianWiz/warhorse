@@ -1,5 +1,5 @@
 [package]
-name = "warhorse_app"
+name = "warhorse_app_old"
 version = "0.1.0"
 description = "A Tauri App"
 authors = ["you"]

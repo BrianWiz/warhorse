@@ -7,7 +7,7 @@ edition = "2021"
 warhorse_protocol = { path = "../warhorse_protocol" }
 serde_json = { workspace = true }
 
-rust_socketio = "0.6.0"
+rust_socketio = {version = "0.6.0" }
 
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }

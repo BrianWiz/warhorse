@@ -54,7 +54,7 @@ impl<T> DataAccess<T>
     pub fn friend_requests_get(&self, user_id: UserId) -> Vec<Friend> {
         let mut friend_requests = self.database.friend_requests_get(user_id);
         friend_requests.iter_mut().for_each(|friend| {
-            friend.status = FriendStatus::PendingRequest;
+            friend.status = FriendStatus::InviteSent;
         });
         friend_requests
     }

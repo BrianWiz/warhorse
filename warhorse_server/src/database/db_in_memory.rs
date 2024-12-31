@@ -113,7 +113,7 @@ impl Database for InMemoryDatabase {
                 self.users_get(id.clone()).map(|user| Friend {
                     id: user.id,
                     display_name: user.display_name,
-                    status: FriendStatus::PendingRequest,
+                    status: FriendStatus::InviteSent,
                 })
             })
             .collect()
