@@ -25,14 +25,24 @@ impl<T> DataAccess<T>
         self.database.users_insert(user)
     }
 
+    pub fn user_get_pending_friend_requests_for_user(&self, user_id: UserId) -> Vec<Friend> {
+        self.database.user_get_pending_friend_requests_for_user(user_id)
+    }
+
     pub fn friends_get(&self, user_id: UserId) -> Vec<Friend> {
         let friends = self.database.friends_get(user_id.clone());
 
-        // we also want to include pending friend requests
-        let friend_requests = self.database.friend_requests_get(user_id);
+        let pending_friend_requests = self.database.user_get_pending_friend_requests_for_user(user_id.clone());
+        let invites_sent = self.database.user_get_friend_request_invites_sent_for_user(user_id.clone());
+        let blocks = self.database.user_blocks_get_blocks_for_user(user_id);
 
         // combine
-        friends.iter().chain(friend_requests.iter()).cloned().collect()
+        friends.iter()
+            .chain(pending_friend_requests.iter())
+            .chain(invites_sent.iter())
+            .chain(blocks.iter())
+            .cloned()
+            .collect()
     }
 
     pub fn friends_add(&mut self, user_id: UserId, friend_id: UserId) {
@@ -49,14 +59,6 @@ impl<T> DataAccess<T>
 
     pub fn friend_requests_remove(&mut self, user_id: UserId, friend_id: UserId) {
         self.database.friend_requests_remove(user_id, friend_id);
-    }
-
-    pub fn friend_requests_get(&self, user_id: UserId) -> Vec<Friend> {
-        let mut friend_requests = self.database.friend_requests_get(user_id);
-        friend_requests.iter_mut().for_each(|friend| {
-            friend.status = FriendStatus::InviteSent;
-        });
-        friend_requests
     }
 
     pub fn users_get(&self, user_id: UserId) -> Option<UserPartial> {
@@ -81,10 +83,6 @@ impl<T> DataAccess<T>
 
     pub fn user_blocks_remove(&mut self, user_id: UserId, blocked_id: UserId) {
         self.database.user_blocks_remove(user_id, blocked_id);
-    }
-
-    pub fn user_blocks_get_blocks_for_user(&self, user_id: UserId) -> Vec<UserPartial> {
-        self.database.user_blocks_get_blocks_for_user(user_id)
     }
 
     pub fn user_is_blocked(&self, user_id: UserId, blocked_id: UserId) -> bool {

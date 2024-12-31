@@ -43,7 +43,7 @@ pub extern "C" fn client_new(connection_string: *const c_char) -> *mut WarhorseC
         }
     };
 
-    match WarhorseClient::new(Language::English, connection_str) {
+    match WarhorseClient::new(connection_str) {
         Ok(client) => {
             let impl_handle = Box::new(WarhorseClientImpl(Box::new(client)));
             Box::into_raw(impl_handle) as *mut WarhorseClientHandle

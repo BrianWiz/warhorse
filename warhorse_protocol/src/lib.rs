@@ -169,8 +169,8 @@ impl ProtoType for RequestError {}
 pub enum FriendStatus {
     Online,
     Offline,
-    InviteSent,
-    PendingRequest,
+    FriendRequestSent,
+    FriendRequestReceived,
     Blocked,
 }
 
@@ -179,8 +179,8 @@ impl std::fmt::Display for FriendStatus {
         match self {
             FriendStatus::Online => write!(f, "Online"),
             FriendStatus::Offline => write!(f, "Offline"),
-            FriendStatus::InviteSent => write!(f, "Invite Sent"),
-            FriendStatus::PendingRequest => write!(f, "Pending Request"),
+            FriendStatus::FriendRequestSent => write!(f, "Invite Sent"),
+            FriendStatus::FriendRequestReceived => write!(f, "Pending Request"),
             FriendStatus::Blocked => write!(f, "Blocked"),
         }
     }
@@ -202,11 +202,10 @@ pub struct Friend {
 
 impl ProtoType for Friend {}
 
-/// A friend request
 #[derive(Debug, Serialize, Deserialize)]
 pub struct FriendRequest {
     pub language: Language,
-    pub friend_id: UserId,
+    pub friend_id: String,
 }
 
 impl ProtoType for FriendRequest {}
@@ -265,7 +264,7 @@ pub struct UnblockUserRequest {
 impl ProtoType for UnblockUserRequest {}
 
 /// A chat channel can either be a room or a private message to another user.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ChatChannel {
     Room(RoomId),
     PrivateMessage(UserId),
@@ -287,6 +286,7 @@ impl ProtoType for SendChatMessage {}
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct ChatMessage {
     pub display_name: String,
+    pub channel: ChatChannel,
     pub message: String,
     pub time: u32,
 }

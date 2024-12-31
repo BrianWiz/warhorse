@@ -76,7 +76,7 @@ impl Database for InMemoryDatabase {
         self.user_blocks.retain(|(id, blocked)| id != &user_id || blocked != &blocked_id);
     }
 
-    fn user_blocks_get_blocks_for_user(&self, user_id: UserId) -> Vec<UserPartial> {
+    fn user_blocks_get_blocks_for_user(&self, user_id: UserId) -> Vec<Friend> {
         self.user_blocks.iter()
             .filter_map(|(id, blocked_id)| {
                 if id == &user_id {
@@ -84,6 +84,51 @@ impl Database for InMemoryDatabase {
                 } else {
                     None
                 }
+            })
+            .map(|user| Friend {
+                id: user.id,
+                display_name: user.display_name,
+                status: FriendStatus::Blocked,
+            })
+            .collect()
+    }
+
+    fn user_get_pending_friend_requests_for_user(&self, user_id: UserId) -> Vec<Friend> {
+        self.friend_requests.iter()
+            .filter_map(|(id, friend_requests)| {
+                if friend_requests.contains(&user_id) {
+                    self.users_get(id.clone())
+                } else {
+                    None
+                }
+            })
+            .map(|user| Friend {
+                id: user.id,
+                display_name: user.display_name,
+                status: FriendStatus::FriendRequestReceived,
+            })
+            .collect()
+    }
+
+    fn user_get_friend_request_invites_sent_for_user(&self, user_id: UserId) -> Vec<Friend> {
+        // we need to do a deep search to find all the friend requests that the user has sent.
+        self.friend_requests.iter()
+            .filter_map(|(id, friend_requests)| {
+                if id == &user_id {
+                    Some(friend_requests)
+                } else {
+                    None
+                }
+            })
+            .flat_map(|friend_requests| {
+                friend_requests.iter()
+                    .filter_map(|id| self.users_get(id.clone()))
+                    .map(|user| Friend {
+                        id: user.id,
+                        display_name: user.display_name,
+                        status: FriendStatus::FriendRequestSent,
+                    })
+                    .collect::<Vec<Friend>>()
             })
             .collect()
     }
@@ -104,19 +149,6 @@ impl Database for InMemoryDatabase {
         if let Some(friend_requests) = self.friend_requests.get_mut(&user_id) {
             friend_requests.retain(|id| id != &friend_id);
         }
-    }
-
-    fn friend_requests_get(&self, user_id: UserId) -> Vec<Friend> {
-        self.friend_requests.get(&user_id).cloned().unwrap_or_default()
-            .iter()
-            .filter_map(|id| {
-                self.users_get(id.clone()).map(|user| Friend {
-                    id: user.id,
-                    display_name: user.display_name,
-                    status: FriendStatus::InviteSent,
-                })
-            })
-            .collect()
     }
 
     fn friends_add(&mut self, user_id: UserId, friend_id: UserId) {

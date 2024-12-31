@@ -18,15 +18,16 @@ pub enum WarhorseEvent {
     LoggedIn,
     Error(String),
     FriendsList(Vec<Friend>),
+    FriendRequestReceived(Friend),
     FriendRequestAccepted(Friend),
     ChatMessage(ChatMessage),
 }
 
 pub struct WarhorseClient {
     // events we've received but haven't processed yet
-    pending_events: Arc<RwLock<VecDeque<WarhorseEvent>>>,
+    pending_receives: Arc<RwLock<VecDeque<WarhorseEvent>>>,
     // messages we've queued to send but haven't yet
-    sender: std::sync::mpsc::Sender<(String, serde_json::Value)>,
+    pending_sends: std::sync::mpsc::Sender<(String, serde_json::Value)>,
 }
 
 impl WarhorseClient {
@@ -100,6 +101,34 @@ impl WarhorseClient {
                                         }
                                         Err(e) => {
                                             error!("Failed to parse friends list: {:?}", e);
+                                        }
+                                    }
+                                }
+                            }
+                            _ => {
+                                error!("Unexpected payload: {:?}", payload);
+                            }
+                        }
+                    }
+                }
+            )
+            .on(EVENT_RECEIVE_FRIEND_REQUESTS,
+                {
+                    let pending_events_clone = pending_events.clone();
+                    move |payload, _socket| {
+                        match payload {
+                            Payload::Text(text) => {
+                                if let Some(first) = text.first() {
+                                    match json_to_vec::<Friend>(first.clone()) {
+                                        Ok(mut friend_requests) => {
+                                            if let Some(friend_request) = friend_requests.pop() {
+                                                if let Ok(mut event_queue) = pending_events_clone.write() {
+                                                    event_queue.push_back(WarhorseEvent::FriendRequestReceived(friend_request));
+                                                }
+                                            }
+                                        }
+                                        Err(e) => {
+                                            error!("Failed to parse friend requests: {:?}", e);
                                         }
                                     }
                                 }
@@ -190,14 +219,14 @@ impl WarhorseClient {
         });
 
         Ok(WarhorseClient {
-            pending_events,
-            sender,
+            pending_receives: pending_events,
+            pending_sends: sender,
         })
     }
 
     pub fn send_user_login_request(&self, user_login: UserLogin) -> Result<(), ClientError> {
         let json = user_login.to_json()?;
-        if let Err(e) = self.sender.send((EVENT_SEND_USER_LOGIN.to_string(), json)) {
+        if let Err(e) = self.pending_sends.send((EVENT_SEND_USER_LOGIN.to_string(), json)) {
             return Err(ClientError(format!("Failed to queue login request: {:?}", e)));
         }
         Ok(())
@@ -205,15 +234,19 @@ impl WarhorseClient {
 
     pub fn send_user_registration_request(&self, user_registration: UserRegistration) -> Result<(), ClientError> {
         let json = user_registration.to_json()?;
-        if let Err(e) = self.sender.send((EVENT_SEND_USER_REGISTER.to_string(), json)) {
+        if let Err(e) = self.pending_sends.send((EVENT_SEND_USER_REGISTER.to_string(), json)) {
             return Err(ClientError(format!("Failed to queue registration request: {:?}", e)));
         }
         Ok(())
     }
 
-    pub fn send_friend_request(&self, user_id: &str) -> Result<(), ClientError> {
-        let json = json!(user_id);
-        if let Err(e) = self.sender.send((EVENT_SEND_FRIEND_REQUEST.to_string(), json)) {
+    pub fn send_friend_request(&self, friend_id: &str) -> Result<(), ClientError> {
+        let json = FriendRequest {
+            language: Language::English,
+            friend_id: friend_id.to_string(),
+        }.to_json()?;
+
+        if let Err(e) = self.pending_sends.send((EVENT_SEND_FRIEND_REQUEST.to_string(), json)) {
             return Err(ClientError(format!("Failed to queue friend request: {:?}", e)));
         }
         Ok(())
@@ -221,15 +254,70 @@ impl WarhorseClient {
 
     pub fn send_chat_message(&self, chat_message: SendChatMessage) -> Result<(), ClientError> {
         let json = chat_message.to_json()?;
-        if let Err(e) = self.sender.send((EVENT_SEND_CHAT_MESSAGE.to_string(), json)) {
+        if let Err(e) = self.pending_sends.send((EVENT_SEND_CHAT_MESSAGE.to_string(), json)) {
             return Err(ClientError(format!("Failed to queue chat message: {:?}", e)));
+        }
+        Ok(())
+    }
+
+    pub fn send_block_friend(&self, friend_id: &str) -> Result<(), ClientError> {
+        let json = BlockUserRequest {
+            language: Language::English,
+            user_id: friend_id.to_string(),
+        }.to_json()?;
+        if let Err(e) = self.pending_sends.send((EVENT_SEND_USER_BLOCK.to_string(), json)) {
+            return Err(ClientError(format!("Failed to queue block friend request: {:?}", e)));
+        }
+        Ok(())
+    }
+
+    pub fn send_unblock_friend(&self, friend_id: &str) -> Result<(), ClientError> {
+        let json = UnblockUserRequest {
+            language: Language::English,
+            user_id: friend_id.to_string(),
+        }.to_json()?;
+        if let Err(e) = self.pending_sends.send((EVENT_SEND_USER_UNBLOCK.to_string(), json)) {
+            return Err(ClientError(format!("Failed to queue unblock friend request: {:?}", e)));
+        }
+        Ok(())
+    }
+
+    pub fn send_accept_friend_request(&self, friend_id: &str) -> Result<(), ClientError> {
+        let json = AcceptFriendRequest {
+            language: Language::English,
+            friend_id: friend_id.to_string(),
+        }.to_json()?;
+        if let Err(e) = self.pending_sends.send((EVENT_SEND_FRIEND_REQUEST_ACCEPT.to_string(), json)) {
+            return Err(ClientError(format!("Failed to queue accept friend request: {:?}", e)));
+        }
+        Ok(())
+    }
+
+    pub fn send_reject_friend_request(&self, friend_id: &str) -> Result<(), ClientError> {
+        let json = RejectFriendRequest {
+            language: Language::English,
+            friend_id: friend_id.to_string(),
+        }.to_json()?;
+        if let Err(e) = self.pending_sends.send((EVENT_SEND_FRIEND_REQUEST_REJECT.to_string(), json)) {
+            return Err(ClientError(format!("Failed to queue reject friend request: {:?}", e)));
+        }
+        Ok(())
+    }
+
+    pub fn send_remove_friend(&self, friend_id: &str) -> Result<(), ClientError> {
+        let json = RemoveFriendRequest {
+            language: Language::English,
+            friend_id: friend_id.to_string(),
+        }.to_json()?;
+        if let Err(e) = self.pending_sends.send((EVENT_SEND_FRIEND_REMOVE.to_string(), json)) {
+            return Err(ClientError(format!("Failed to queue remove friend request: {:?}", e)));
         }
         Ok(())
     }
 
     pub fn pump(&self) -> Vec<WarhorseEvent> {
         let mut events = Vec::new();
-        if let Ok(mut event_queue) = self.pending_events.write() {
+        if let Ok(mut event_queue) = self.pending_receives.write() {
             while let Some(event) = event_queue.pop_front() {
                 events.push(event);
             }

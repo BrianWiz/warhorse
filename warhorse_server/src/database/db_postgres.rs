@@ -38,7 +38,15 @@ impl Database for PostgresDatabase {
         unimplemented!();
     }
 
-    fn user_blocks_get_blocks_for_user(&self, user_id: UserId) -> Vec<UserPartial> {
+    fn user_blocks_get_blocks_for_user(&self, user_id: UserId) -> Vec<Friend> {
+        unimplemented!();
+    }
+
+    fn user_get_pending_friend_requests_for_user(&self, user_id: UserId) -> Vec<Friend> {
+        unimplemented!();
+    }
+
+    fn user_get_friend_request_invites_sent_for_user(&self, user_id: UserId) -> Vec<Friend> {
         unimplemented!();
     }
 
@@ -51,10 +59,6 @@ impl Database for PostgresDatabase {
     }
 
     fn friend_requests_remove(&mut self, user_id: UserId, friend_id: UserId) {
-        unimplemented!();
-    }
-
-    fn friend_requests_get(&self, user_id: UserId) -> Vec<Friend> {
         unimplemented!();
     }
 

@@ -20,6 +20,9 @@ pub enum InteractiveState {
     WhisperFriendModal(Friend),
     RemoveFriendModal(Friend),
     BlockFriendModal(Friend),
+    UnblockFriendModal(Friend),
+    AcceptFriendRequestModal(Friend),
+    RejectFriendRequestModal(Friend),
     FriendContextMenu(String)
 }
 
@@ -96,6 +99,46 @@ impl Warhorse {
         }
     }
 
+    pub fn send_block_friend(&mut self, friend_id: String) {
+        if let Some(client) = &self.client {
+            if let Ok(()) = client.send_block_friend(&friend_id) {
+                info!("Sent request to block friend {}", friend_id);
+            }
+        }
+    }
+
+    pub fn send_unblock_friend(&mut self, friend_id: String) {
+        if let Some(client) = &self.client {
+            if let Ok(()) = client.send_unblock_friend(&friend_id) {
+                info!("Sent request to unblock friend {}", friend_id);
+            }
+        }
+    }
+
+    pub fn send_remove_friend(&mut self, friend_id: String) {
+        if let Some(client) = &self.client {
+            if let Ok(()) = client.send_remove_friend(&friend_id) {
+                info!("Sent request to remove friend {}", friend_id);
+            }
+        }
+    }
+
+    pub fn send_accept_friend_request(&mut self, friend_id: String) {
+        if let Some(client) = &self.client {
+            if let Ok(()) = client.send_accept_friend_request(&friend_id) {
+                info!("Sent request to accept friend request from {}", friend_id);
+            }
+        }
+    }
+
+    pub fn send_reject_friend_request(&mut self, friend_id: String) {
+        if let Some(client) = &self.client {
+            if let Ok(()) = client.send_reject_friend_request(&friend_id) {
+                info!("Sent request to reject friend request from {}", friend_id);
+            }
+        }
+    }
+
     pub fn pump(&mut self) -> Vec<WarhorseEvent> {
         if let Some(client) = &self.client {
             client.pump()
@@ -141,9 +184,8 @@ pub fn App() -> Element {
     provide_context(interactive_state);
 
     // Periodically run the pump function
-    let state_cloned = state.clone();
     use_future(move ||  {
-        let state_cloned = state_cloned.clone();
+        let state_cloned = state.clone();
         async move {
             let mut interval = tokio::time::interval(Duration::from_millis(100));
             loop {
@@ -166,6 +208,9 @@ pub fn App() -> Element {
                         WarhorseEvent::FriendsList(friends) => {
                             info!("Received FriendsList event");
                             friends_list.write().0 = categorize_friends(friends);
+                        }
+                        WarhorseEvent::FriendRequestReceived(friend) => {
+                            info!("Received FriendRequestReceived event");
                         }
                         WarhorseEvent::FriendRequestAccepted(friend) => {
                             info!("Received FriendRequestAccepted event");
@@ -343,7 +388,6 @@ fn wh_main() -> Element {
 
 #[component]
 fn wh_sidebar() -> Element {
-    let state = use_context::<Arc<Mutex<Warhorse>>>();
     let friends_list = use_context::<Signal<FriendsList>>();
     let mut interactive_state = use_context::<Signal<InteractiveState>>();
     rsx! {
@@ -351,8 +395,8 @@ fn wh_sidebar() -> Element {
             div { class: "friends-container",
                 h2 { "Friends" }
                 div { class: "friends",
-                    if let Some(friends) = friends_list.read().0.get(&FriendStatus::PendingRequest) {
-                        wh_friend_category { status: FriendStatus::PendingRequest, friends: friends.clone() }
+                    if let Some(friends) = friends_list.read().0.get(&FriendStatus::FriendRequestReceived) {
+                        wh_friend_category { status: FriendStatus::FriendRequestReceived, friends: friends.clone() }
                     }
 
                     if let Some(friends) = friends_list.read().0.get(&FriendStatus::Online) {
@@ -363,8 +407,8 @@ fn wh_sidebar() -> Element {
                         wh_friend_category { status: FriendStatus::Offline, friends: friends.clone() }
                     }
 
-                    if let Some(friends) = friends_list.read().0.get(&FriendStatus::InviteSent) {
-                        wh_friend_category { status: FriendStatus::InviteSent, friends: friends.clone() }
+                    if let Some(friends) = friends_list.read().0.get(&FriendStatus::FriendRequestSent) {
+                        wh_friend_category { status: FriendStatus::FriendRequestSent, friends: friends.clone() }
                     }
 
                     if let Some(friends) = friends_list.read().0.get(&FriendStatus::Blocked) {
@@ -389,8 +433,8 @@ fn wh_friend_category(status: FriendStatus, friends: Vec<Friend>) -> Element {
     let status = match status {
         FriendStatus::Online => "Online",
         FriendStatus::Offline => "Offline",
-        FriendStatus::InviteSent => "Invites Sent",
-        FriendStatus::PendingRequest => "Pending Requests",
+        FriendStatus::FriendRequestSent => "Friend Requests Sent",
+        FriendStatus::FriendRequestReceived => "Friend Requests Received",
         FriendStatus::Blocked => "Blocked",
     };
 
@@ -406,7 +450,6 @@ fn wh_friend_category(status: FriendStatus, friends: Vec<Friend>) -> Element {
 
 #[component]
 fn wh_friend(friend: Friend) -> Element {
-    let state = use_context::<Arc<Mutex<Warhorse>>>();
     let mut interactive_state = use_context::<Signal<InteractiveState>>();
     let friend_id = friend.id.clone();
     rsx! {
@@ -430,6 +473,9 @@ fn wh_friend_context_menu(friend: Friend) -> Element {
     let mut interactive_state = use_context::<Signal<InteractiveState>>();
     let friend_clone = friend.clone();
     let friend_clone2 = friend.clone();
+    let friend_clone3 = friend.clone();
+    let friend_clone4 = friend.clone();
+    let friend_clone5 = friend.clone();
     rsx! {
         div {
             class: "friend-context-menu",
@@ -448,6 +494,34 @@ fn wh_friend_context_menu(friend: Friend) -> Element {
                         *interactive_state.write() = InteractiveState::BlockFriendModal(friend_clone2.clone());
                     },
                     "Block"
+                }
+            }
+            if friend.status == FriendStatus::Blocked {
+                button {
+                    class: "secondary",
+                    onclick: move |e| {
+                        e.stop_propagation();
+                        *interactive_state.write() = InteractiveState::UnblockFriendModal(friend_clone3.clone());
+                    },
+                    "Unblock"
+                }
+            }
+            if friend.status == FriendStatus::FriendRequestReceived {
+                button {
+                    class: "secondary",
+                    onclick: move |e| {
+                        e.stop_propagation();
+                        *interactive_state.write() = InteractiveState::AcceptFriendRequestModal(friend_clone4.clone());
+                    },
+                    "Accept"
+                }
+                button {
+                    class: "secondary",
+                    onclick: move |e| {
+                        e.stop_propagation();
+                        *interactive_state.write() = InteractiveState::AcceptFriendRequestModal(friend_clone5.clone());
+                    },
+                    "Reject"
                 }
             }
             button {
@@ -482,6 +556,9 @@ fn wh_add_friend_modal() -> Element {
                     onsubmit: move |e| {
                         e.prevent_default();
                         *interactive_state.write() = InteractiveState::Nothing;
+                        state.lock().unwrap().send_friend_request(
+                            e.values().get("friend_id").unwrap_or(&FormValue(vec![])).as_value()
+                        );
                     },
                     input {
                         r#type: "text",
@@ -491,7 +568,7 @@ fn wh_add_friend_modal() -> Element {
                     
                     button {
                         r#type: "submit",
-                        "Add"
+                        "Request"
                     }
                 }
             }
@@ -508,6 +585,7 @@ fn wh_add_friend_modal() -> Element {
 
 #[component]
 fn wh_block_friend_modal(friend: Friend) -> Element {
+    let state = use_context::<Arc<Mutex<Warhorse>>>();
     let mut interactive_state = use_context::<Signal<InteractiveState>>();
     rsx! {
         div { class: "modal",
@@ -523,7 +601,10 @@ fn wh_block_friend_modal(friend: Friend) -> Element {
                 }
                 button {
                     class: "danger",
-                    onclick: move |_| *interactive_state.write() = InteractiveState::Nothing,
+                    onclick: move |_| {
+                        state.lock().unwrap().send_block_friend(friend.id.clone());
+                        *interactive_state.write() = InteractiveState::Nothing;
+                    },
                     "Block"
                 }
             }
@@ -532,59 +613,159 @@ fn wh_block_friend_modal(friend: Friend) -> Element {
 }
 
 #[component]
+fn wh_accept_friend_request_modal(friend: Friend) -> Element {
+    let state = use_context::<Arc<Mutex<Warhorse>>>();
+    let mut interactive_state = use_context::<Signal<InteractiveState>>();
+    rsx! {
+        div { class: "modal",
+            div { class: "modal-content",
+                h2 { "Accept Friend Request" }
+                p { "Are you sure you want to accept {friend.display_name}'s friend request?" }
+            }
+            div { class: "modal-buttons",
+                button {
+                    class: "secondary",
+                    onclick: move |_| *interactive_state.write() = InteractiveState::Nothing,
+                    "Cancel"
+                }
+                button {
+                    class: "danger",
+                    onclick: move |_| {
+                        state.lock().unwrap().send_accept_friend_request(friend.id.clone());
+                        *interactive_state.write() = InteractiveState::Nothing;
+                    },
+                    "Accept"
+                }
+            }
+        }
+    }
+}
+
+#[component]
+fn wh_reject_friend_request_modal(friend: Friend) -> Element {
+    let state = use_context::<Arc<Mutex<Warhorse>>>();
+    let mut interactive_state = use_context::<Signal<InteractiveState>>();
+    rsx! {
+        div { class: "modal",
+            div { class: "modal-content",
+                h2 { "Reject Friend Request" }
+                p { "Are you sure you want to reject {friend.display_name}'s friend request?" }
+            }
+            div { class: "modal-buttons",
+                button {
+                    class: "secondary",
+                    onclick: move |_| *interactive_state.write() = InteractiveState::Nothing,
+                    "Cancel"
+                }
+                button {
+                    class: "danger",
+                    onclick: move |_| {
+                        state.lock().unwrap().send_reject_friend_request(friend.id.clone());
+                        *interactive_state.write() = InteractiveState::Nothing;
+                    },
+                    "Reject"
+                }
+            }
+        }
+    }
+}
+
+#[component]
+fn wh_unblock_friend_modal(friend: Friend) -> Element {
+    let state = use_context::<Arc<Mutex<Warhorse>>>();
+    let mut interactive_state = use_context::<Signal<InteractiveState>>();
+    rsx! {
+        div { class: "modal",
+            div { class: "modal-content",
+                h2 { "Unblock Friend" }
+                p { "Are you sure you want to unblock {friend.display_name}?" }
+            }
+            div { class: "modal-buttons",
+                button {
+                    class: "secondary",
+                    onclick: move |_| *interactive_state.write() = InteractiveState::Nothing,
+                    "Cancel"
+                }
+                button {
+                    class: "danger",
+                    onclick: move |_| {
+                        state.lock().unwrap().send_unblock_friend(friend.id.clone());
+                        *interactive_state.write() = InteractiveState::Nothing;
+                    },
+                    "Unblock"
+                }
+            }
+        }
+    }
+}
+
+#[component]
 fn wh_remove_friend_modal(friend: Friend) -> Element {
-   let mut interactive_state = use_context::<Signal<InteractiveState>>();
-   rsx! {
-       div { class: "modal",
-           div { class: "modal-content",
-               h2 { "Remove Friend" }
-               p { "Are you sure you want to remove {friend.display_name}?" }
-           }
-           div { class: "modal-buttons",
-               button {
-                   class: "secondary",
-                   onclick: move |_| *interactive_state.write() = InteractiveState::Nothing,
-                   "Cancel"
-               }
-               button {
-                   class: "danger",
-                   onclick: move |_| *interactive_state.write() = InteractiveState::Nothing,
-                   "Remove"
-               }
-           }
-       }
-   }
+    let state = use_context::<Arc<Mutex<Warhorse>>>();
+    let mut interactive_state = use_context::<Signal<InteractiveState>>();
+    rsx! {
+        div { class: "modal",
+            div { class: "modal-content",
+                h2 { "Remove Friend" }
+                p { "Are you sure you want to remove {friend.display_name}?" }
+            }
+            div { class: "modal-buttons",
+                button {
+                    class: "secondary",
+                    onclick: move |_| *interactive_state.write() = InteractiveState::Nothing,
+                    "Cancel"
+                }
+                button {
+                    class: "danger",
+                    onclick: move |_| {
+                        state.lock().unwrap().send_remove_friend(friend.id.clone());
+                        *interactive_state.write() = InteractiveState::Nothing;
+                    },
+                    "Remove"
+                }
+            }
+        }
+    }
 }
 
 #[component]
 fn wh_whisper_friend_modal(friend: Friend) -> Element {
-   let mut interactive_state = use_context::<Signal<InteractiveState>>();
-
-   rsx! {
-       div { class: "modal",
-           div { class: "modal-content",
-               h2 { "Whisper to {friend.display_name}" }
-               form { class: "whisper-form",
-                   input {
-                       r#type: "text",
-                       name: "message",
-                       placeholder: "Type a message..."
-                   }
-                   button {
-                       r#type: "submit",
-                       "Send"
-                   }
-               }
-           }
-           div { class: "modal-buttons",
-               button {
-                   class: "secondary",
-                   onclick: move |_| *interactive_state.write() = InteractiveState::Nothing,
-                   "Close"
-               }
-           }
-       }
-   }
+    let state = use_context::<Arc<Mutex<Warhorse>>>();
+    let mut interactive_state = use_context::<Signal<InteractiveState>>();
+    rsx! {
+        div { class: "modal",
+            div { class: "modal-content",
+                h2 { "Whisper to {friend.display_name}" }
+                form { 
+                    class: "whisper-form",
+                    onsubmit: move |e| {
+                        e.prevent_default();
+                        *interactive_state.write() = InteractiveState::Nothing;
+                        state.lock().unwrap().send_whisper_message(
+                            friend.id.clone(),
+                            e.values().get("message").unwrap_or(&FormValue(vec![])).as_value()
+                        );
+                    },
+                    input {
+                        r#type: "text",
+                        name: "message",
+                        placeholder: "Type a message..."
+                    }
+                    button {
+                        r#type: "submit",
+                        "Send"
+                    }
+                }
+            }
+            div { class: "modal-buttons",
+                button {
+                    class: "secondary",
+                    onclick: move |_| *interactive_state.write() = InteractiveState::Nothing,
+                    "Close"
+                }
+            }
+        }
+    }
 }
 
 #[component]

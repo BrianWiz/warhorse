@@ -138,7 +138,6 @@ where T: Database + Send + Sync + 'static
     /// Sends post login data to the user
     fn send_post_login_data(&self, user_id: UserId) {
         self.send_friend_list(user_id.clone());
-        self.send_block_list(user_id.clone());
         self.send_friend_requests(user_id.clone());
         self.send_post_login_event(user_id);
     }
@@ -170,6 +169,7 @@ where T: Database + Send + Sync + 'static
 
         let serialized_message = ChatMessage {
             display_name,
+            channel: message.channel.clone(),
             message: message.message.clone(),
             time: chrono::Utc::now().timestamp() as u32,
         }.to_json()?;
@@ -212,7 +212,7 @@ where T: Database + Send + Sync + 'static
     }
 
     fn send_friend_requests(&self, user_id: UserId) {
-        match vec_to_json(self.data_service.friend_requests_get(user_id.clone())) {
+        match vec_to_json(self.data_service.user_get_pending_friend_requests_for_user(user_id.clone())) {
             Ok(friend_requests) => {
                 match self.get_socket_id(user_id) {
                     Ok(socket_id) => {
@@ -255,6 +255,9 @@ where T: Database + Send + Sync + 'static
 
             // refresh the friends list for the sender
             self.send_friend_list(sender_id);
+
+            // refresh the friends list for the target user
+            self.send_friend_list(req.friend_id);
         } else {
             error!("User does not exist: {}", req.friend_id);
             return Err(format!("{} does not exist", req.friend_id))?;
@@ -304,10 +307,11 @@ where T: Database + Send + Sync + 'static
 
     /// Rejects a friend request
     fn reject_friend_request(&mut self, user_id: UserId, req: RejectFriendRequest) -> Result<(), ServerError> {
-        self.data_service.friend_requests_remove(user_id, req.friend_id.clone());
+        self.data_service.friend_requests_remove(user_id.clone(), req.friend_id.clone());
 
-        // We send the friend list back to the user who was rejected so that they can see the updated status.
+        // refresh the friends list for both users
         self.send_friend_list(req.friend_id);
+        self.send_friend_list(user_id);
         Ok(())
     }
 
@@ -328,16 +332,16 @@ where T: Database + Send + Sync + 'static
         // We need to refresh both users friends list
         self.send_friend_list(user_id.clone());
         self.send_friend_list(req.user_id);
-
-        // Refresh the block list for the user who blocked the other user
-        self.send_block_list(user_id);
         Ok(())
     }
 
     /// Unblocks a user
     fn unblock_user(&mut self, user_id: UserId, req: UnblockUserRequest) -> Result<(), ServerError> {
-        self.data_service.user_blocks_remove(user_id.clone(), req.user_id);
-        self.send_block_list(user_id);
+        self.data_service.user_blocks_remove(user_id.clone(), req.user_id.clone());
+        
+        // We need to refresh both users friends list
+        self.send_friend_list(user_id.clone());
+        self.send_friend_list(req.user_id);
         Ok(())
     }
 
@@ -392,26 +396,6 @@ where T: Database + Send + Sync + 'static
         }
     }
 
-    fn send_block_list(&self, user_id: UserId) {
-        match vec_to_json(self.data_service.user_blocks_get_blocks_for_user(user_id.clone())) {
-            Ok(blocks_list) => {
-                match self.get_socket_id(user_id) {
-                    Ok(socket_id) => {
-                        if let Some(socket) = self.get_socket(socket_id) {
-                            let _= socket.emit(EVENT_RECEIVE_BLOCKED_USERS, &blocks_list);
-                        }
-                    },
-                    Err(e) => {
-                        info!(?e, "Failed to get socket ID");
-                    }
-                }
-            },
-            Err(e) => {
-                error!(?e, "Failed to serialize blocks list");
-            }
-        }
-    }
-
     /// Whether a room exists or not
     fn room_exists(&self, room_id: RoomId) -> bool {
         let room_id = room_id.as_str();
@@ -433,8 +417,11 @@ where T: Database + Send + Sync + 'static
     fn get_friends_list(&self, user_id: UserId) -> Vec<Friend> {
         let mut friends_list = self.data_service.friends_get(user_id);
         for friend in friends_list.iter_mut() {
-            // if they're not a pending friend request, we want to include their online status
-            if matches!(friend.status, FriendStatus::InviteSent) {
+            // get their online status if they are a friend who:
+            // - is not a pending friend request
+            // - is not a friend request invite sent
+            // - is not blocked
+            if friend.status == FriendStatus::Offline {
                 friend.status = self.get_online_status(friend.id.clone());
             }
         }
@@ -561,6 +548,12 @@ fn listen_for_friend_requests<T: Database + Send + Sync + 'static>(
                     match server.get_logged_in_user_id(socket.id) {
                         Some(sender_id) => {
                             info!("Found sender ID: {}", sender_id);
+
+                            if sender_id == data.friend_id {
+                                info!(ns = socket.ns(), ?socket.id, "User tried to send a friend request to themselves, it was ignored");
+                                return;
+                            }
+
                             if let Err(e) = server.send_friend_request(sender_id, data) {
                                 info!(ns = socket.ns(), ?socket.id, ?e, "Failed to send friend request");
                             } else {
