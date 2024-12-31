@@ -328,6 +328,7 @@ where T: Database + Send + Sync + 'static
 
     /// Blocks a user
     fn block_user(&mut self, user_id: UserId, req: BlockUserRequest) -> Result<(), ServerError> {
+        self.data_service.friends_remove(user_id.clone(), req.user_id.clone());
         self.data_service.user_blocks_insert(user_id.clone(), req.user_id.clone());
 
         // We need to refresh both users friends list
@@ -438,7 +439,7 @@ fn listen_for_chat_messages<T: Database + Send + Sync + 'static>(socket_ref: &So
                     let logged_in_user_id = server.lock().await.get_logged_in_user_id(socket.id);
                     if let Some(logged_in_user_id) = logged_in_user_id {
                         if let Err(e) = server.lock().await.send_chat_message(logged_in_user_id, data) {
-                            warn!(ns = socket.ns(), ?socket.id, ?e, "Failed to send chat message");
+                            info!(ns = socket.ns(), ?socket.id, ?e, "Failed to send chat message");
                         }
                     }
                 },
