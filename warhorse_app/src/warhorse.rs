@@ -2,12 +2,6 @@ use std::collections::HashMap;
 use dioxus::logger::tracing::info;
 use warhorse_client::{warhorse_protocol::*, WarhorseClient, WarhorseEvent};
 
-pub struct ReceivedHello(pub bool);
-pub struct ReceivedLoggedIn(pub bool);
-pub struct FriendsList(pub HashMap<FriendStatus, Vec<Friend>>);
-pub struct ChatMessages(pub Vec<ChatMessage>);
-
-
 #[derive(PartialEq, Eq)]
 pub enum InteractiveState {
     Nothing,

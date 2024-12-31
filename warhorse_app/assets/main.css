@@ -330,3 +330,40 @@ button.danger:hover {
 ::-webkit-scrollbar-corner {
   background: #f1f1f1;
 }
+
+/* ===================== Notifications ===================== */
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slide-in {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.3s forwards;
+}
+
+.animate-slide-in {
+  animation: slide-in 0.3s forwards;
+}
+
+.notification {
+  animation: fade-in 0.3s forwards, slide-in 0.3s forwards;
+  background-color: var(--background-color);
+  color: var(--font-color);
+  padding: var(--default-padding);
+  border: var(--border-width) solid var(--third-color);
+  box-shadow: var(--third-glow);
+
+  display: flex;
+  flex-direction: row;
+  gap: var(--default-padding);
+}
+
+.notification-content {
+  flex: 1;
+}

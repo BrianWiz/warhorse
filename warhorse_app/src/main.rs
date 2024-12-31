@@ -1,6 +1,6 @@
 mod warhorse;
 
-use std::{collections::HashMap, sync::{Arc,Mutex}, time::Duration};
+use std::{collections::HashMap, sync::{Arc,Mutex}, time::{Duration, Instant}};
 
 use dioxus::{desktop::{tao::window::Theme, wry::dpi::{LogicalSize, Size}, WindowBuilder}, logger::tracing::info, prelude::*};
 use warhorse_client::{warhorse_protocol::*, WarhorseClient, WarhorseEvent};
@@ -9,6 +9,8 @@ use warhorse::*;
 
 const FAVICON: Asset = asset!("/assets/favicon.ico");
 const MAIN_CSS: Asset = asset!("/assets/main.css");
+
+
 
 pub fn main() {
     std::env::set_var("RUST_BACKTRACE", "full");
@@ -33,10 +35,43 @@ pub fn main() {
         .launch(App);
 }
 
+
+pub struct ReceivedHello(pub bool);
+
+pub struct ReceivedLoggedIn(pub bool);
+
+pub struct FriendsList(pub HashMap<FriendStatus, Vec<Friend>>);
+
+pub struct ChatMessages(pub Vec<ChatMessage>);
+
+#[derive(Clone, PartialEq)]
+pub struct Notification {
+    pub message: String,
+    pub timestamp: Instant,
+    pub notification_type: NotificationType,
+}
+
+#[derive(Clone, PartialEq)]
+pub enum NotificationType {
+    Generic,
+    FriendRequestReceived,
+    FriendAccepted,
+}
+
+pub struct Notifications(pub Vec<Notification>);
+
 #[component]
 pub fn App() -> Element {
     let wh = consume_context::<Arc<Mutex<Warhorse>>>();
     
+    let mut notifications = use_signal(|| Notifications(vec![
+        Notification {
+            message: "You have been logged in".to_string(),
+            timestamp: Instant::now(),
+            notification_type: NotificationType::Generic,
+        },
+    ]));
+
     let mut received_hello = use_signal(|| ReceivedHello(false));
     let mut received_logged_in = use_signal(|| ReceivedLoggedIn(false));
     let mut friends_list = use_signal(|| FriendsList(HashMap::new()));
@@ -49,12 +84,13 @@ pub fn App() -> Element {
     provide_context(friends_list);
     provide_context(chat_messages);
     provide_context(interactive_state);
+    provide_context(notifications);
 
-    // Periodically run the pump function
+    // Periodically pump events from the Warhorse client
     use_future(move ||  {
         let wh_cloned = wh.clone();
         async move {
-            let mut interval = tokio::time::interval(Duration::from_millis(100));
+            let mut interval = tokio::time::interval(Duration::from_millis(100)); // be nice to the cpu
             loop {
                 interval.tick().await;
 
@@ -78,9 +114,19 @@ pub fn App() -> Element {
                         }
                         WarhorseEvent::FriendRequestReceived(friend) => {
                             info!("Received FriendRequestReceived event");
+                            notifications.write().0.push(Notification {
+                                message: format!("You have received a friend request from {}", friend.display_name),
+                                timestamp: Instant::now(),
+                                notification_type: NotificationType::FriendRequestReceived,
+                            });
                         }
                         WarhorseEvent::FriendRequestAccepted(friend) => {
                             info!("Received FriendRequestAccepted event");
+                            notifications.write().0.push(Notification {
+                                message: format!("{} has accepted your friend request", friend.display_name),
+                                timestamp: Instant::now(),
+                                notification_type: NotificationType::FriendAccepted,
+                            });
                         }
                         WarhorseEvent::ChatMessage(message) => {
                             info!("Received ChatMessage event");
@@ -99,6 +145,60 @@ pub fn App() -> Element {
             wh_login {}
         } else {
             wh_main {}
+        }
+    }
+}
+
+#[component]
+fn wh_notifications() -> Element {
+    let notifications = use_context::<Signal<Notifications>>();
+    let mut active_notifs = use_signal(Vec::new);
+ 
+    use_effect(move || {
+        active_notifs.set(notifications.read().0.clone());
+    });
+ 
+    // delete notifications older than 7 seconds
+    use_future(move || async move {
+        let mut interval = tokio::time::interval(Duration::from_secs(1));
+        loop {
+            interval.tick().await;
+            let now = Instant::now();
+            let current = active_notifs.read().clone();
+            let filtered = current.iter()
+                .filter(|n| now.duration_since(n.timestamp).as_secs() < 7)
+                .cloned()
+                .collect::<Vec<_>>();
+            active_notifs.set(filtered);
+        }
+    });
+ 
+    rsx! {
+        div { class: "notifications",
+            for notification in active_notifs.read().iter() {
+                wh_notification { notification: notification.clone() }
+            }
+        }
+    }
+}
+
+#[component]
+fn wh_notification(notification: Notification) -> Element {
+
+    let mut notifications = use_context::<Signal<Notifications>>();
+
+    rsx! {
+        div { class: "notification",
+            div {
+                class: "notification-message animate-fade-in animate-slide-in", "{notification.message}" 
+            }
+            button {
+                class: "notification-close",
+                onclick: move |_| {
+                    notifications.write().0.retain(|n| n != &notification);
+                },
+                "×"
+            }
         }
     }
 }
@@ -235,6 +335,8 @@ fn wh_main() -> Element {
             }
         }
 
+        wh_notifications {}
+
         if *interactive_state.read() == InteractiveState::AddFriendModal {
             wh_add_friend_modal {}
         }
@@ -358,7 +460,8 @@ fn wh_friend_context_menu(friend: Friend) -> Element {
     rsx! {
         div {
             class: "friend-context-menu",
-            if friend.status != FriendStatus::Blocked {
+
+            if friend.status == FriendStatus::Online {
                 button {
                     onclick: move |e| {
                         e.stop_propagation();
@@ -366,6 +469,9 @@ fn wh_friend_context_menu(friend: Friend) -> Element {
                     },
                     "Whisper"
                 }
+            }
+
+            if friend.status != FriendStatus::Blocked {
                 button {
                     class: "secondary",
                     onclick: move |e| {
@@ -375,6 +481,7 @@ fn wh_friend_context_menu(friend: Friend) -> Element {
                     "Block"
                 }
             }
+
             if friend.status == FriendStatus::Blocked {
                 button {
                     class: "secondary",
@@ -385,6 +492,7 @@ fn wh_friend_context_menu(friend: Friend) -> Element {
                     "Unblock"
                 }
             }
+            
             if friend.status == FriendStatus::FriendRequestReceived {
                 button {
                     class: "secondary",
