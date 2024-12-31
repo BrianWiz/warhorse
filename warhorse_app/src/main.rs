@@ -8,7 +8,6 @@ const MAIN_CSS: Asset = asset!("/assets/main.css");
 
 pub struct ReceivedHello(pub bool);
 pub struct ReceivedLoggedIn(pub bool);
-
 pub struct FriendsList(pub HashMap<FriendStatus, Vec<Friend>>);
 pub struct ChatMessages(pub Vec<ChatMessage>);
 

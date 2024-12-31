@@ -50,7 +50,9 @@ impl<T> DataAccess<T>
     }
 
     pub fn friends_remove(&mut self, user_id: UserId, friend_id: UserId) {
-        self.database.friends_remove(user_id, friend_id);
+        self.database.friends_remove(user_id.clone(), friend_id.clone());
+        // also remove any friend request
+        self.friend_requests_remove(user_id, friend_id);
     }
 
     pub fn friend_requests_insert(&mut self, user_id: UserId, friend_id: UserId) {

@@ -317,6 +317,7 @@ where T: Database + Send + Sync + 'static
 
     /// Removes a friend
     fn remove_friend(&mut self, user_id: UserId, req: RemoveFriendRequest) -> Result<(), ServerError> {
+        info!("Removing friend: {:?}", req);
         self.data_service.friends_remove(user_id.clone(), req.friend_id.clone());
 
         // We need to refresh both users friends list
@@ -434,14 +435,10 @@ fn listen_for_chat_messages<T: Database + Send + Sync + 'static>(socket_ref: &So
         async move {
             match SendChatMessage::from_json(data) {
                 Ok(data) => {
-                    let sender_id = {
-                        let server_guard = server.lock().await;
-                        server_guard.get_logged_in_user_id(socket.id)
-                    };
-
-                    if let Some(sender_id) = sender_id {
-                        if let Err(e) = server.lock().await.send_chat_message(sender_id, data) {
-                            info!(ns = socket.ns(), ?socket.id, ?e, "Failed to send chat message");
+                    let logged_in_user_id = server.lock().await.get_logged_in_user_id(socket.id);
+                    if let Some(logged_in_user_id) = logged_in_user_id {
+                        if let Err(e) = server.lock().await.send_chat_message(logged_in_user_id, data) {
+                            warn!(ns = socket.ns(), ?socket.id, ?e, "Failed to send chat message");
                         }
                     }
                 },
@@ -581,7 +578,8 @@ fn listen_for_accept_friend_requests<T: Database + Send + Sync + 'static>(
         async move {
             match AcceptFriendRequest::from_json(data) {
                 Ok(data) => {
-                    match server.lock().await.get_logged_in_user_id(socket.id) {
+                    let logged_in_user_id = server.lock().await.get_logged_in_user_id(socket.id);
+                    match logged_in_user_id {
                         Some(user_id) => {
                             if let Err(e) = server.lock().await.accept_friend_request(user_id, data) {
                                 error!(ns = socket.ns(), ?socket.id, ?e, "Failed to accept friend request");
@@ -608,7 +606,8 @@ fn listen_for_reject_friend_requests<T: Database + Send + Sync + 'static>(
         async move {
             match RejectFriendRequest::from_json(data) {
                 Ok(data) => {
-                    match server.lock().await.get_logged_in_user_id(socket.id) {
+                    let logged_in_user_id = server.lock().await.get_logged_in_user_id(socket.id);
+                    match logged_in_user_id {
                         Some(user_id) => {
                             if let Err(e) = server.lock().await.reject_friend_request(user_id, data) {
                                 error!(ns = socket.ns(), ?socket.id, ?e, "Failed to reject friend request");
@@ -635,7 +634,8 @@ fn listen_for_remove_friend<T: Database + Send + Sync + 'static>(
         async move {
             match RemoveFriendRequest::from_json(data) {
                 Ok(data) => {
-                    match server.lock().await.get_logged_in_user_id(socket.id) {
+                    let logged_in_user_id = server.lock().await.get_logged_in_user_id(socket.id);
+                    match logged_in_user_id {
                         Some(user_id) => {
                             if let Err(e) = server.lock().await.remove_friend(user_id, data) {
                                 error!(ns = socket.ns(), ?socket.id, ?e, "Failed to remove friend");
@@ -662,7 +662,8 @@ fn listen_for_block_user_requests<T: Database + Send + Sync + 'static>(
         async move {
             match BlockUserRequest::from_json(data) {
                 Ok(data) => {
-                    match server.lock().await.get_logged_in_user_id(socket.id) {
+                    let logged_in_user_id = server.lock().await.get_logged_in_user_id(socket.id);
+                    match logged_in_user_id {
                         Some(user_id) => {
                             if let Err(e) = server.lock().await.block_user(user_id, data) {
                                 error!(ns = socket.ns(), ?socket.id, ?e, "Failed to block user");
@@ -689,7 +690,8 @@ fn listen_for_unblock_user_requests<T: Database + Send + Sync + 'static>(
         async move {
             match UnblockUserRequest::from_json(data) {
                 Ok(data) => {
-                    match server.lock().await.get_logged_in_user_id(socket.id) {
+                    let logged_in_user_id = server.lock().await.get_logged_in_user_id(socket.id);
+                    match logged_in_user_id {
                         Some(user_id) => {
                             if let Err(e) = server.lock().await.unblock_user(user_id, data) {
                                 error!(ns = socket.ns(), ?socket.id, ?e, "Failed to unblock user");

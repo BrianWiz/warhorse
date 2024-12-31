@@ -53,7 +53,7 @@ async fn main() -> Result<(), ServerError> {
             },
         None
         ).await?;
-        info!("Run example with `cargo run --example friends_list -- --account-name test`");
+        info!("Created test user with account name `test` and password `password`");
 
         server.register_user(
             UserRegistration {
@@ -65,7 +65,7 @@ async fn main() -> Result<(), ServerError> {
             },
             None
         ).await?;
-        info!("Run example with `cargo run --example friends_list -- --account-name test2`");
+        info!("Created test user with account name `test2` and password `password`");
 
         server.register_user(
             UserRegistration {
@@ -77,7 +77,7 @@ async fn main() -> Result<(), ServerError> {
             },
             None
         ).await?;
-        info!("Run example with `cargo run --example friends_list -- --account-name test3`");
+        info!("Created test user with account name `test3` and password `password`");
     }
 
     let app = axum::Router::new()

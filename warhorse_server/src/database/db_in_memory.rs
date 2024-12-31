@@ -147,7 +147,15 @@ impl Database for InMemoryDatabase {
 
     fn friend_requests_remove(&mut self, user_id: UserId, friend_id: UserId) {
         if let Some(friend_requests) = self.friend_requests.get_mut(&user_id) {
+            
+            // remove the friend request from the user.
             friend_requests.retain(|id| id != &friend_id);
+
+            // need to do a deep search to remove the friend request from the other user.
+            self.friend_requests.iter_mut()
+                .for_each(|(_, friend_requests)| {
+                    friend_requests.retain(|id| id != &user_id);
+                });
         }
     }
 
