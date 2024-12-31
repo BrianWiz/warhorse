@@ -1,155 +1,14 @@
+mod warhorse;
+
 use std::{collections::HashMap, sync::{Arc,Mutex}, time::Duration};
 
-use dioxus::{logger::tracing::{info, warn}, prelude::*};
+use dioxus::{desktop::{tao::window::Theme, wry::dpi::{LogicalSize, Size}, WindowBuilder}, logger::tracing::info, prelude::*};
 use warhorse_client::{warhorse_protocol::*, WarhorseClient, WarhorseEvent};
+
+use warhorse::*;
 
 const FAVICON: Asset = asset!("/assets/favicon.ico");
 const MAIN_CSS: Asset = asset!("/assets/main.css");
-
-pub struct ReceivedHello(pub bool);
-pub struct ReceivedLoggedIn(pub bool);
-pub struct FriendsList(pub HashMap<FriendStatus, Vec<Friend>>);
-pub struct ChatMessages(pub Vec<ChatMessage>);
-
-
-#[derive(PartialEq, Eq)]
-pub enum InteractiveState {
-    Nothing,
-    AddFriendModal,
-    WhisperFriendModal(Friend),
-    RemoveFriendModal(Friend),
-    BlockFriendModal(Friend),
-    UnblockFriendModal(Friend),
-    AcceptFriendRequestModal(Friend),
-    RejectFriendRequestModal(Friend),
-    FriendContextMenu(String)
-}
-
-pub struct Warhorse {
-    pub client: Option<WarhorseClient>,
-}
-
-impl Warhorse {
-    pub fn send_friend_request(&mut self, id: String) {
-        if let Some(client) = &self.client {
-            if let Ok(()) = client.send_friend_request(&id) {
-                info!("Sent friend request to {}", id);
-            }
-        }
-    }
-
-    pub fn send_user_login_request(&mut self, username: String, password: String) {
-        if let Some(client) = &self.client {
-            let username_clone = username.clone();
-            let user_login_request = UserLogin {
-                language: Language::English,
-                identity: if Self::is_email_as_username(&username) {
-                    LoginUserIdentity::Email(username)
-                } else {
-                    LoginUserIdentity::AccountName(username)
-                },
-                password,
-            };
-            if let Ok(()) = client.send_user_login_request(user_login_request) {
-                info!("Sent login request for user {}", username_clone);
-            }
-        }
-    }
-    
-    pub fn send_user_registration_request(&mut self, account_name: String, password: String, display_name: String, email: String) {
-        if let Some(client) = &self.client {
-            let account_name_clone = account_name.clone();
-            let user_registration_request = UserRegistration {
-                account_name,
-                password,
-                email,
-                display_name,
-                language: Language::English,
-            };
-            if let Ok(()) = client.send_user_registration_request(user_registration_request) {
-                info!("Sent registration request for user {}", account_name_clone);
-            }
-        }
-    }
-
-    pub fn send_whisper_message(&mut self, friend_id: String, message: String) {
-        if let Some(client) = &self.client {
-            let message = SendChatMessage {
-                language: Language::English,
-                message,
-                channel: ChatChannel::PrivateMessage(friend_id.clone()),
-            };
-            if let Ok(()) = client.send_chat_message(message) {
-                info!("Sent whisper message to {}", friend_id);
-            }
-        }
-    }
-
-    pub fn send_chat_message(&mut self, message: String) {
-        if let Some(client) = &self.client {
-            let message = SendChatMessage {
-                language: Language::English,
-                message,
-                channel: ChatChannel::Room("general".to_string()),
-            };
-            if let Ok(()) = client.send_chat_message(message) {
-                info!("Sent chat message to #general");
-            }
-        }
-    }
-
-    pub fn send_block_friend(&mut self, friend_id: String) {
-        if let Some(client) = &self.client {
-            if let Ok(()) = client.send_block_friend(&friend_id) {
-                info!("Sent request to block friend {}", friend_id);
-            }
-        }
-    }
-
-    pub fn send_unblock_friend(&mut self, friend_id: String) {
-        if let Some(client) = &self.client {
-            if let Ok(()) = client.send_unblock_friend(&friend_id) {
-                info!("Sent request to unblock friend {}", friend_id);
-            }
-        }
-    }
-
-    pub fn send_remove_friend(&mut self, friend_id: String) {
-        if let Some(client) = &self.client {
-            if let Ok(()) = client.send_remove_friend(&friend_id) {
-                info!("Sent request to remove friend {}", friend_id);
-            }
-        }
-    }
-
-    pub fn send_accept_friend_request(&mut self, friend_id: String) {
-        if let Some(client) = &self.client {
-            if let Ok(()) = client.send_accept_friend_request(&friend_id) {
-                info!("Sent request to accept friend request from {}", friend_id);
-            }
-        }
-    }
-
-    pub fn send_reject_friend_request(&mut self, friend_id: String) {
-        if let Some(client) = &self.client {
-            if let Ok(()) = client.send_reject_friend_request(&friend_id) {
-                info!("Sent request to reject friend request from {}", friend_id);
-            }
-        }
-    }
-
-    pub fn pump(&mut self) -> Vec<WarhorseEvent> {
-        if let Some(client) = &self.client {
-            client.pump()
-        } else {
-            vec![]
-        }
-    }
-
-    fn is_email_as_username(input: &str) -> bool {
-        input.contains('@')
-    }
-}
 
 pub fn main() {
     std::env::set_var("RUST_BACKTRACE", "full");
@@ -162,12 +21,21 @@ pub fn main() {
 
     dioxus::LaunchBuilder::new()
         .with_context(context)
+        .with_cfg(dioxus::desktop::Config::new()
+            .with_background_color((0, 0, 0, 255))
+            .with_window(WindowBuilder::new()
+                .with_title("Warhorse")
+                .with_inner_size(Size::Logical(LogicalSize::new(800.0, 600.0)))
+                .with_resizable(true)
+                .with_theme(Some(Theme::Dark))
+            )
+        )
         .launch(App);
 }
 
 #[component]
 pub fn App() -> Element {
-    let state = consume_context::<Arc<Mutex<Warhorse>>>();
+    let wh = consume_context::<Arc<Mutex<Warhorse>>>();
     
     let mut received_hello = use_signal(|| ReceivedHello(false));
     let mut received_logged_in = use_signal(|| ReceivedLoggedIn(false));
@@ -175,7 +43,7 @@ pub fn App() -> Element {
     let mut chat_messages = use_signal(|| ChatMessages(vec![]));
     let interactive_state = use_signal(|| InteractiveState::Nothing);
 
-    provide_context(state.clone());
+    provide_context(wh.clone());
     provide_context(received_hello);
     provide_context(received_logged_in);
     provide_context(friends_list);
@@ -184,13 +52,13 @@ pub fn App() -> Element {
 
     // Periodically run the pump function
     use_future(move ||  {
-        let state_cloned = state.clone();
+        let wh_cloned = wh.clone();
         async move {
             let mut interval = tokio::time::interval(Duration::from_millis(100));
             loop {
                 interval.tick().await;
 
-                let events = state_cloned.lock().unwrap().pump();
+                let events = wh_cloned.lock().unwrap().pump();
                 for event in events {
                     match event {
                         WarhorseEvent::Hello => {
@@ -238,8 +106,8 @@ pub fn App() -> Element {
 #[component]
 fn wh_login() -> Element {
     let received_hello = use_context::<Signal<ReceivedHello>>();
-    let state_cloned = use_context::<Arc<Mutex<Warhorse>>>();
-    let state_cloned2 = state_cloned.clone();
+    let wh_cloned = use_context::<Arc<Mutex<Warhorse>>>();
+    let wh_cloned2 = wh_cloned.clone();
 
     rsx! {
         if received_hello.read().0 {
@@ -249,7 +117,7 @@ fn wh_login() -> Element {
                     class: "login-form",
                     onsubmit: move |e| {
                         e.prevent_default();
-                        state_cloned.lock().unwrap().send_user_login_request(
+                        wh_cloned.lock().unwrap().send_user_login_request(
                             e.values().get("username").unwrap_or(&FormValue(vec![])).as_value(),
                             e.values().get("password").unwrap_or(&FormValue(vec![])).as_value()
                         );
@@ -275,7 +143,7 @@ fn wh_login() -> Element {
                     class: "register-form",
                     onsubmit: move |e| {
                         e.prevent_default();
-                        state_cloned2.lock().unwrap().send_user_registration_request(
+                        wh_cloned2.lock().unwrap().send_user_registration_request(
                             e.values().get("account_name").unwrap_or(&FormValue(vec![])).as_value(),
                             e.values().get("password").unwrap_or(&FormValue(vec![])).as_value(),
                             e.values().get("display_name").unwrap_or(&FormValue(vec![])).as_value(),
@@ -318,7 +186,7 @@ fn wh_login() -> Element {
 
 #[component]
 fn wh_main() -> Element {
-    let state = use_context::<Arc<Mutex<Warhorse>>>();
+    let wh = use_context::<Arc<Mutex<Warhorse>>>();
     let interactive_state = use_context::<Signal<InteractiveState>>();
     let chat_messages = use_context::<Signal<ChatMessages>>();
 
@@ -346,7 +214,7 @@ fn wh_main() -> Element {
                 onsubmit: move |e| {
                     e.prevent_default();
                     let message = message_input.to_string();
-                    state.lock().unwrap().send_chat_message(message);
+                    wh.lock().unwrap().send_chat_message(message);
 
                     // Clears the input field
                     message_input.set(String::new());
@@ -381,6 +249,18 @@ fn wh_main() -> Element {
     
         if let InteractiveState::BlockFriendModal(friend) = &*interactive_state.read() {
             wh_block_friend_modal { friend: friend.clone() }
+        }
+
+        if let InteractiveState::UnblockFriendModal(friend) = &*interactive_state.read() {
+            wh_unblock_friend_modal { friend: friend.clone() }
+        }
+
+        if let InteractiveState::AcceptFriendRequestModal(friend) = &*interactive_state.read() {
+            wh_accept_friend_request_modal { friend: friend.clone() }
+        }
+
+        if let InteractiveState::RejectFriendRequestModal(friend) = &*interactive_state.read() {
+            wh_reject_friend_request_modal { friend: friend.clone() }
         }
     }
 }
@@ -518,7 +398,7 @@ fn wh_friend_context_menu(friend: Friend) -> Element {
                     class: "secondary",
                     onclick: move |e| {
                         e.stop_propagation();
-                        *interactive_state.write() = InteractiveState::AcceptFriendRequestModal(friend_clone5.clone());
+                        *interactive_state.write() = InteractiveState::RejectFriendRequestModal(friend_clone5.clone());
                     },
                     "Reject"
                 }
@@ -544,7 +424,7 @@ fn wh_friend_context_menu(friend: Friend) -> Element {
 
 #[component]
 fn wh_add_friend_modal() -> Element {
-   let state = use_context::<Arc<Mutex<Warhorse>>>();
+   let wh = use_context::<Arc<Mutex<Warhorse>>>();
    let mut interactive_state = use_context::<Signal<InteractiveState>>();
    rsx! {
        div { class: "modal",
@@ -555,7 +435,7 @@ fn wh_add_friend_modal() -> Element {
                     onsubmit: move |e| {
                         e.prevent_default();
                         *interactive_state.write() = InteractiveState::Nothing;
-                        state.lock().unwrap().send_friend_request(
+                        wh.lock().unwrap().send_friend_request(
                             e.values().get("friend_id").unwrap_or(&FormValue(vec![])).as_value()
                         );
                     },
@@ -584,7 +464,7 @@ fn wh_add_friend_modal() -> Element {
 
 #[component]
 fn wh_block_friend_modal(friend: Friend) -> Element {
-    let state = use_context::<Arc<Mutex<Warhorse>>>();
+    let wh = use_context::<Arc<Mutex<Warhorse>>>();
     let mut interactive_state = use_context::<Signal<InteractiveState>>();
     rsx! {
         div { class: "modal",
@@ -601,7 +481,7 @@ fn wh_block_friend_modal(friend: Friend) -> Element {
                 button {
                     class: "danger",
                     onclick: move |_| {
-                        state.lock().unwrap().send_block_friend(friend.id.clone());
+                        wh.lock().unwrap().send_block_friend(friend.id.clone());
                         *interactive_state.write() = InteractiveState::Nothing;
                     },
                     "Block"
@@ -613,7 +493,7 @@ fn wh_block_friend_modal(friend: Friend) -> Element {
 
 #[component]
 fn wh_accept_friend_request_modal(friend: Friend) -> Element {
-    let state = use_context::<Arc<Mutex<Warhorse>>>();
+    let wh = use_context::<Arc<Mutex<Warhorse>>>();
     let mut interactive_state = use_context::<Signal<InteractiveState>>();
     rsx! {
         div { class: "modal",
@@ -630,7 +510,7 @@ fn wh_accept_friend_request_modal(friend: Friend) -> Element {
                 button {
                     class: "danger",
                     onclick: move |_| {
-                        state.lock().unwrap().send_accept_friend_request(friend.id.clone());
+                        wh.lock().unwrap().send_accept_friend_request(friend.id.clone());
                         *interactive_state.write() = InteractiveState::Nothing;
                     },
                     "Accept"
@@ -642,7 +522,7 @@ fn wh_accept_friend_request_modal(friend: Friend) -> Element {
 
 #[component]
 fn wh_reject_friend_request_modal(friend: Friend) -> Element {
-    let state = use_context::<Arc<Mutex<Warhorse>>>();
+    let wh = use_context::<Arc<Mutex<Warhorse>>>();
     let mut interactive_state = use_context::<Signal<InteractiveState>>();
     rsx! {
         div { class: "modal",
@@ -659,7 +539,7 @@ fn wh_reject_friend_request_modal(friend: Friend) -> Element {
                 button {
                     class: "danger",
                     onclick: move |_| {
-                        state.lock().unwrap().send_reject_friend_request(friend.id.clone());
+                        wh.lock().unwrap().send_reject_friend_request(friend.id.clone());
                         *interactive_state.write() = InteractiveState::Nothing;
                     },
                     "Reject"
@@ -671,7 +551,7 @@ fn wh_reject_friend_request_modal(friend: Friend) -> Element {
 
 #[component]
 fn wh_unblock_friend_modal(friend: Friend) -> Element {
-    let state = use_context::<Arc<Mutex<Warhorse>>>();
+    let wh = use_context::<Arc<Mutex<Warhorse>>>();
     let mut interactive_state = use_context::<Signal<InteractiveState>>();
     rsx! {
         div { class: "modal",
@@ -688,7 +568,7 @@ fn wh_unblock_friend_modal(friend: Friend) -> Element {
                 button {
                     class: "danger",
                     onclick: move |_| {
-                        state.lock().unwrap().send_unblock_friend(friend.id.clone());
+                        wh.lock().unwrap().send_unblock_friend(friend.id.clone());
                         *interactive_state.write() = InteractiveState::Nothing;
                     },
                     "Unblock"
@@ -700,7 +580,7 @@ fn wh_unblock_friend_modal(friend: Friend) -> Element {
 
 #[component]
 fn wh_remove_friend_modal(friend: Friend) -> Element {
-    let state = use_context::<Arc<Mutex<Warhorse>>>();
+    let wh = use_context::<Arc<Mutex<Warhorse>>>();
     let mut interactive_state = use_context::<Signal<InteractiveState>>();
     rsx! {
         div { class: "modal",
@@ -717,7 +597,7 @@ fn wh_remove_friend_modal(friend: Friend) -> Element {
                 button {
                     class: "danger",
                     onclick: move |_| {
-                        state.lock().unwrap().send_remove_friend(friend.id.clone());
+                        wh.lock().unwrap().send_remove_friend(friend.id.clone());
                         *interactive_state.write() = InteractiveState::Nothing;
                     },
                     "Remove"
@@ -729,7 +609,7 @@ fn wh_remove_friend_modal(friend: Friend) -> Element {
 
 #[component]
 fn wh_whisper_friend_modal(friend: Friend) -> Element {
-    let state = use_context::<Arc<Mutex<Warhorse>>>();
+    let wh = use_context::<Arc<Mutex<Warhorse>>>();
     let mut interactive_state = use_context::<Signal<InteractiveState>>();
     rsx! {
         div { class: "modal",
@@ -740,7 +620,7 @@ fn wh_whisper_friend_modal(friend: Friend) -> Element {
                     onsubmit: move |e| {
                         e.prevent_default();
                         *interactive_state.write() = InteractiveState::Nothing;
-                        state.lock().unwrap().send_whisper_message(
+                        wh.lock().unwrap().send_whisper_message(
                             friend.id.clone(),
                             e.values().get("message").unwrap_or(&FormValue(vec![])).as_value()
                         );
