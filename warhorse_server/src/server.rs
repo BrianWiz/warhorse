@@ -558,7 +558,7 @@ fn listen_for_friend_requests<T: Database + Send + Sync + 'static>(
                             }
                         },
                         None => {
-                            error!(ns = socket.ns(), ?socket.id, "Failed to get user ID - user might not be logged in");
+                            info!(ns = socket.ns(), ?socket.id, "Failed to get user ID - user might not be logged in");
                         }
                     }
                 }
@@ -582,11 +582,11 @@ fn listen_for_accept_friend_requests<T: Database + Send + Sync + 'static>(
                     match logged_in_user_id {
                         Some(user_id) => {
                             if let Err(e) = server.lock().await.accept_friend_request(user_id, data) {
-                                error!(ns = socket.ns(), ?socket.id, ?e, "Failed to accept friend request");
+                                info!(ns = socket.ns(), ?socket.id, ?e, "Failed to accept friend request");
                             }
                         },
                         None => {
-                            error!(ns = socket.ns(), ?socket.id, "Failed to get user ID");
+                            info!(ns = socket.ns(), ?socket.id, "Failed to get user ID - user might not be logged in");
                         }
                     }
                 },
@@ -610,11 +610,11 @@ fn listen_for_reject_friend_requests<T: Database + Send + Sync + 'static>(
                     match logged_in_user_id {
                         Some(user_id) => {
                             if let Err(e) = server.lock().await.reject_friend_request(user_id, data) {
-                                error!(ns = socket.ns(), ?socket.id, ?e, "Failed to reject friend request");
+                                info!(ns = socket.ns(), ?socket.id, ?e, "Failed to reject friend request");
                             }
                         },
                         None => {
-                            error!(ns = socket.ns(), ?socket.id, "Failed to get user ID");
+                            info!(ns = socket.ns(), ?socket.id, "Failed to get user ID - user might not be logged in");
                         }
                     }
                 },
@@ -638,11 +638,11 @@ fn listen_for_remove_friend<T: Database + Send + Sync + 'static>(
                     match logged_in_user_id {
                         Some(user_id) => {
                             if let Err(e) = server.lock().await.remove_friend(user_id, data) {
-                                error!(ns = socket.ns(), ?socket.id, ?e, "Failed to remove friend");
+                                info!(ns = socket.ns(), ?socket.id, ?e, "Failed to remove friend");
                             }
                         },
                         None => {
-                            error!(ns = socket.ns(), ?socket.id, "Failed to get user ID");
+                            info!(ns = socket.ns(), ?socket.id, "Failed to get user ID - user might not be logged in");
                         }
                     }
                 },
@@ -666,11 +666,11 @@ fn listen_for_block_user_requests<T: Database + Send + Sync + 'static>(
                     match logged_in_user_id {
                         Some(user_id) => {
                             if let Err(e) = server.lock().await.block_user(user_id, data) {
-                                error!(ns = socket.ns(), ?socket.id, ?e, "Failed to block user");
+                                info!(ns = socket.ns(), ?socket.id, ?e, "Failed to block user");
                             }
                         },
                         None => {
-                            error!(ns = socket.ns(), ?socket.id, "Failed to get user ID");
+                            info!(ns = socket.ns(), ?socket.id, "Failed to get user ID - user might not be logged in");
                         }
                     }
                 },
@@ -694,11 +694,11 @@ fn listen_for_unblock_user_requests<T: Database + Send + Sync + 'static>(
                     match logged_in_user_id {
                         Some(user_id) => {
                             if let Err(e) = server.lock().await.unblock_user(user_id, data) {
-                                error!(ns = socket.ns(), ?socket.id, ?e, "Failed to unblock user");
+                                info!(ns = socket.ns(), ?socket.id, ?e, "Failed to unblock user");
                             }
                         },
                         None => {
-                            error!(ns = socket.ns(), ?socket.id, "Failed to get user ID");
+                            info!(ns = socket.ns(), ?socket.id, "Failed to get user ID - user might not be logged in");
                         }
                     }
                 },
@@ -735,7 +735,7 @@ pub async fn handle_connection<T: Database + Send + Sync + 'static>(
 
     socket.emit(EVENT_RECEIVE_HELLO, &crate::i18n::hello_message(Language::English)).ok();
 
-    // add them to the general chat room
+    // add them to the general chat room, everyone is in general
     socket.join("general").ok();
 
     listen_for_user_login(&socket, server.clone());
