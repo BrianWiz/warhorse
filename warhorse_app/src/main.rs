@@ -64,13 +64,7 @@ pub struct Notifications(pub Vec<Notification>);
 pub fn App() -> Element {
     let wh = consume_context::<Arc<Mutex<Warhorse>>>();
     
-    let mut notifications = use_signal(|| Notifications(vec![
-        Notification {
-            message: "You have been logged in".to_string(),
-            timestamp: Instant::now(),
-            notification_type: NotificationType::Generic,
-        },
-    ]));
+    let mut notifications = use_signal(|| Notifications(Vec::new()));
 
     let mut received_hello = use_signal(|| ReceivedHello(false));
     let mut received_logged_in = use_signal(|| ReceivedLoggedIn(false));
@@ -104,6 +98,11 @@ pub fn App() -> Element {
                         WarhorseEvent::LoggedIn => {
                             info!("Received LoggedIn event");
                             received_logged_in.write().0 = true;
+                            notifications.write().0.push(Notification {
+                                message: "You have successfully logged in".to_string(),
+                                timestamp: Instant::now(),
+                                notification_type: NotificationType::Generic,
+                            });
                         }
                         WarhorseEvent::Error(error) => {
                             info!("Received Error event: {:?}", error);
@@ -299,7 +298,7 @@ fn wh_main() -> Element {
         }
         wh_sidebar {}
         section { class: "main", 
-            h2 { "Main" }
+            h2 { "#general" }
             div { class: "chat",
                 for message in chat_messages.read().0.iter() {
                     wh_chat_message {
@@ -492,7 +491,7 @@ fn wh_friend_context_menu(friend: Friend) -> Element {
                     "Unblock"
                 }
             }
-            
+
             if friend.status == FriendStatus::FriendRequestReceived {
                 button {
                     class: "secondary",
