@@ -157,6 +157,17 @@
     @apply cursor-pointer;
   }
 
+  /* Context Menu */
+  .friend-context-menu {
+    @apply bg-black border border-orange-900;
+    @apply flex flex-col w-48;
+  }
+  .friend-context-menu button {
+    @apply px-4 py-2 text-left;
+    @apply text-orange-400 hover:bg-orange-900/20;
+    @apply border-b border-orange-900/30 last:border-b-0;
+  }
+
   /* ================================= Modals ================================= */
   .modal {
     @apply fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2;
