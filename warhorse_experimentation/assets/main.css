@@ -1,0 +1,15 @@
+#main {
+  background-color: transparent;
+  pointer-events: none;
+}
+
+body, html {
+  background-color: transparent;
+}
+
+* {
+  font-size: 200px;
+  color: white;
+  pointer-events: none;
+}
+

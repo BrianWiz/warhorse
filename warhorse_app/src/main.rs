@@ -2,7 +2,7 @@ mod warhorse;
 
 use std::{collections::HashMap, sync::{Arc,Mutex}, time::{Duration, Instant}};
 
-use dioxus::{desktop::{tao::window::Theme, wry::dpi::{LogicalSize, Size}, WindowBuilder}, logger::tracing::info, prelude::*};
+use dioxus::{desktop::{tao::window::Theme, wry::dpi::{LogicalSize, PhysicalPosition, Size}, WindowBuilder}, logger::tracing::info, prelude::*};
 use warhorse_client::{warhorse_protocol::*, WarhorseClient, WarhorseEvent};
 
 use warhorse::*;
@@ -21,15 +21,18 @@ pub fn main() {
         client,
     }));
 
-    dioxus::LaunchBuilder::new()
+    dioxus::LaunchBuilder::desktop()
         .with_context(context)
         .with_cfg(dioxus::desktop::Config::new()
-            .with_background_color((0, 0, 0, 255))
             .with_window(WindowBuilder::new()
                 .with_title("Warhorse")
-                .with_inner_size(Size::Logical(LogicalSize::new(800.0, 600.0)))
-                .with_resizable(true)
-                .with_theme(Some(Theme::Dark))
+                .with_transparent(true)
+                // .with_decorations(true)
+                // .with_resizable(false)
+                // .with_fullscreen(Some(dioxus::desktop::tao::window::Fullscreen::Borderless(None)))
+                // .with_always_on_top(true)
+                // .with_position(PhysicalPosition::new(0, 0))
+                // .with_max_inner_size(LogicalSize::new(100000, 100000))
             )
         )
         .launch(App);

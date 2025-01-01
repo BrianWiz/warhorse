@@ -10,7 +10,7 @@
   --info-color: #00ffff; 
   --font-color: white;
   --font-color-dark: #000000;
-  --background-color: #020202;
+  --background-color: rgba(0, 0, 0, 0.2);
   --background-light: #dbdbdb;
 
   /* Spacing */
