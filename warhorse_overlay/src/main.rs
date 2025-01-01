@@ -29,19 +29,32 @@ static mut HOTKEY_WAS_PRESSED: bool = false;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt::init();
+    let overlay_mode = false; // Toggle this for overlay vs normal window
 
-    // Initialize client before Dioxus starts
     match WarhorseClient::new("http://localhost:3000") {
         Ok(client) => {
-            info!("Warhorse client initialized");
-            start_overlay(client);
+            if overlay_mode {
+                start_overlay(client);
+            } else {
+                start_normal(client);
+            }
         }
-        Err(e) => {
-            error!("Failed to initialize Warhorse client: {:?}", e);
-        }
+        Err(e) => error!("Failed to initialize Warhorse client: {:?}", e),
     }
-
     Ok(())
+}
+
+fn start_normal(client: WarhorseClient) {
+    dioxus::LaunchBuilder::desktop()
+        .with_context(Arc::new(Mutex::new(client)))
+        .with_cfg(
+            Config::new().with_window(
+                WindowBuilder::new()
+                    .with_title("Warhorse")
+                    .with_inner_size(dioxus::desktop::LogicalSize::new(1280.0, 720.0)),
+            ),
+        )
+        .launch(ui::components::app);
 }
 
 fn start_overlay(client: WarhorseClient) {

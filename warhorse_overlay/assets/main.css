@@ -154,5 +154,53 @@
     @apply px-4 py-2;
     @apply border-b border-orange-900/30;
     @apply flex items-center justify-between;
+    @apply cursor-pointer;
+  }
+
+  /* ================================= Modals ================================= */
+  .modal {
+    @apply fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2;
+    @apply max-w-[500px] w-full z-50;
+    @apply bg-black border border-orange-900;
+  }
+
+  .modal-content {
+    @apply p-6;
+    @apply text-orange-400;
+    @apply flex flex-col min-h-[200px];
+  }
+
+  .modal-content h2 {
+    @apply text-2xl mb-6;
+  }
+
+  .modal-content form {
+    @apply flex gap-2;
+  }
+
+  .modal-content input {
+    @apply flex-1 px-3 py-2;
+    @apply bg-white text-black border-none;
+    @apply font-mono;
+  }
+
+  .modal-content button[type="submit"] {
+    @apply px-4 py-2;
+    @apply bg-orange-500 text-black;
+    @apply font-mono uppercase font-bold;
+    @apply hover:bg-orange-400;
+  }
+
+  .modal-buttons {
+    @apply flex justify-end gap-2;
+    @apply border-t border-orange-900 mt-auto;
+    @apply w-full;
+  }
+
+  .modal-buttons button {
+    @apply px-6 py-2 flex-1;
+    @apply bg-transparent text-orange-400;
+    @apply font-mono uppercase  font-bold;
+    @apply hover:bg-orange-900/20;
   }
 }
