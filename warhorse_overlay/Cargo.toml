@@ -1,0 +1,14 @@
+[package]
+name = "warhorse_overlay"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+warhorse_client = { path = "../warhorse_client" }
+
+tao = "0.31.0"
+dioxus = { version = "0.6.1", features = ["desktop"]}
+windows = { version = "0.58.0", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging"] }
+tokio = { version = "1.42.0", features = ["rt-multi-thread"] }
+tracing = "0.1.41"
+tracing-subscriber = "0.3.19"

@@ -1,0 +1,158 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* JetBrains Mono font */
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+
+@layer base {
+  @layer base {
+    html, body {
+      @apply h-full overflow-hidden;
+    }
+  }
+
+  body {
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  #main {
+    @apply h-full;
+  }
+}
+
+@layer components {
+  
+  /* Main Container */
+  .main-container {
+    @apply flex flex-row h-screen; /* Ensure the container spans full screen */
+  }
+  
+  /* Warhorse Header */
+  .title-header {
+    @apply bg-black/80 text-orange-400 p-4; /* Header styling */
+    @apply border-b border-orange-900/30;
+    @apply flex-grow;
+  }
+
+  /* Sidebar */
+  .sidebar {
+    @apply bg-black/80 bg-gradient-to-tl from-orange-500/20 to-black/20;
+    @apply text-orange-400 w-64; /* Sidebar takes fixed width */
+    @apply flex flex-col flex-grow;
+  }
+
+  .sidebar h2 {
+    @apply text-xl font-bold p-4; /* Sidebar header styling */
+    @apply border-b border-orange-900/30;
+  }
+
+  /* Content */
+  .content {
+    @apply flex flex-col w-full; /* Flex column layout, taking remaining space */
+    @apply text-orange-400 rounded-sm border border-orange-900/30;
+    @apply bg-black/80;
+  }
+
+  .content h2 {
+    @apply text-xl font-bold p-4 text-orange-100; /* Content header styling */
+    @apply border-b border-orange-900/30;
+  }
+
+  /* ================================= Chat Area ================================= */
+
+  .chat {
+    @apply flex flex-col flex-grow; /* Flex column layout for chat */
+  }
+
+  .chat-header {
+    @apply flex items-center justify-between p-4; /* Header styling */
+    @apply border-b border-orange-900/30;
+  }
+
+  /* Chat Messages */
+  .chat-messages {
+    @apply flex-grow p-4; /* Make chat messages scrollable */
+    min-height: 0; /* Prevent it from overflowing */
+  }
+
+  /* Chat Form */
+  .chat-form {
+    @apply flex items-center gap-2 p-4;
+    @apply bg-black/50 border-t border-orange-900/30;
+    @apply flex-shrink-0; /* Ensure the form doesn't shrink */
+    position: sticky;
+    bottom: 0;
+    left: 0;
+    right: 0;
+  }
+
+  .chat-form input {
+    @apply w-full px-3 py-2;
+    @apply bg-black text-orange-400 border border-orange-900/50;
+    @apply font-mono focus:border-orange-400 focus:ring-1 focus:ring-orange-400/20;
+    @apply focus:outline-none placeholder-orange-600;
+  }
+
+  .chat-form button {
+    @apply px-4 py-2;
+    @apply bg-orange-500 text-black font-mono font-bold uppercase;
+    @apply hover:bg-orange-400 transition-colors;
+  }
+
+  /* Chat Messages */
+  .chat-message {
+    @apply mb-4 last:mb-0 border-b border-orange-900/30 pb-2;
+  }
+
+  .chat-message .chat-message-author {
+    @apply text-orange-400 font-bold text-sm;
+  }
+
+  .chat-message .chat-message-time {
+    @apply text-orange-600 text-xs;
+  }
+
+  .chat-message .chat-message-content {
+    @apply text-orange-200 mt-1 text-sm;
+  }
+
+  /* ================================= Friends ================================= */
+  
+  /* Friends Container (take up remaining space) */
+  .friends-container {
+    @apply flex flex-col flex-grow overflow-y-auto;
+  }
+
+  /* Add Friend Container */
+  .add-friend-container {
+    @apply flex flex-col; /* Stack the button vertically */
+    @apply flex-shrink-0; /* Prevent shrinking */
+    @apply mt-auto; /* Push button to the bottom */
+  }
+
+  /* Add Friend Button */
+  .add-friend {
+    @apply p-4;
+    @apply bg-orange-500 text-black font-mono font-bold uppercase;
+    @apply hover:bg-orange-400 transition-colors;
+  }
+
+  /* Friends Category */
+  .friends-category {
+    @apply  text-orange-400 font-bold;
+  }
+
+  .friends-category h3 {
+    @apply p-4;
+    @apply text-orange-200 font-bold;
+    @apply border-b border-orange-900/30;
+  }
+
+  /* Friend */
+  .friend {
+    @apply px-4 py-2;
+    @apply border-b border-orange-900/30;
+    @apply flex items-center justify-between;
+  }
+}

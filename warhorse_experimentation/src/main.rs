@@ -3,7 +3,8 @@ use dioxus::desktop::tao::event::Event;
 use tracing::info;
 use windows::Win32::{Foundation::{BOOL, HWND, LPARAM}, UI::{Input::KeyboardAndMouse::{EnableWindow, SetFocus}, WindowsAndMessaging::{EnumWindows, FindWindowExW, GetWindowLongPtrW, GetWindowTextW, PostMessageW, SetForegroundWindow, SetWindowLongPtrW, SetWindowPos, GWL_EXSTYLE, GWL_STYLE, HWND_BOTTOM, SWP_NOMOVE, SWP_NOSIZE, WM_KEYDOWN, WM_KEYUP, WS_DISABLED, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_NOREDIRECTIONBITMAP, WS_EX_TOOLWINDOW, WS_EX_TRANSPARENT, WS_POPUP}}};
 
-const MAIN_WINDOW : &str = "BrutalGrounds";
+const MAIN_WINDOW_TITLE : &str = "Visual Studio Code";
+const OVERLAY_WINDOW_TITLE: &str = "Warhorse Game Overlay";
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt::init();
@@ -19,7 +20,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .with_parent_window(hwnd.0 as isize)
                         .with_always_on_bottom(true)
                         .with_maximized(true)
-                        .with_title("Warhorse Game Overlay")
+                        .with_title(OVERLAY_WINDOW_TITLE)
                 )
                 .with_custom_event_handler(move |event, _window| {
                     match event {
@@ -56,7 +57,7 @@ fn disable_overlay_window_interaction(parent_hwnd: HWND) -> bool {
             let mut title = [0u16; 512];
             GetWindowTextW(hwnd, &mut title);
 
-            if String::from_utf16_lossy(&title).trim_end_matches('\0') == "Warhorse Game Overlay" {
+            if String::from_utf16_lossy(&title).trim_end_matches('\0') == OVERLAY_WINDOW_TITLE {
                 let ex_style = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
                 SetWindowLongPtrW(hwnd, GWL_EXSTYLE, 
                     ex_style | WS_EX_LAYERED.0 as isize 
@@ -108,7 +109,7 @@ unsafe extern "system" fn enum_windows(window: HWND, param: LPARAM) -> BOOL {
         .trim_end_matches('\0')
         .to_string();
 
-    if window_text.contains(MAIN_WINDOW) {
+    if window_text.contains(MAIN_WINDOW_TITLE) {
         *(param.0 as *mut HWND) = window;
         return BOOL(0);  // Return FALSE to stop enumeration
     }

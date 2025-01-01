@@ -4,90 +4,20 @@ use std::{
     time::{Duration, Instant},
 };
 
-use dioxus::{desktop::WindowBuilder, prelude::*};
+use dioxus::prelude::*;
 use tracing::{error, info};
+
+use super::signals::*;
 use warhorse_client::{warhorse_protocol::*, WarhorseClient, WarhorseEvent};
 
 const FAVICON: Asset = asset!("/assets/favicon.ico");
 const MAIN_CSS: Asset = asset!("/assets/main.css");
-
-pub fn main() {
-    tracing_subscriber::fmt::init();
-
-    std::env::set_var("RUST_BACKTRACE", "full");
-
-    // Initialize client before Dioxus starts
-    match WarhorseClient::new("http://localhost:3000") {
-        Ok(client) => {
-            info!("Warhorse client initialized");
-            start_dioxus(client);
-        }
-        Err(e) => {
-            error!("Failed to initialize Warhorse client: {:?}", e);
-        }
-    }
-}
-
-fn start_dioxus(client: WarhorseClient) {
-    let context = Arc::new(Mutex::new(client));
-
-    dioxus::LaunchBuilder::desktop()
-        .with_context(context)
-        .with_cfg(
-            dioxus::desktop::Config::new().with_window(
-                WindowBuilder::new()
-                    .with_title("Warhorse")
-                    .with_transparent(true), // .with_decorations(true)
-                                             // .with_resizable(false)
-                                             // .with_fullscreen(Some(dioxus::desktop::tao::window::Fullscreen::Borderless(None)))
-                                             // .with_always_on_top(true)
-                                             // .with_position(PhysicalPosition::new(0, 0))
-                                             // .with_max_inner_size(LogicalSize::new(100000, 100000))
-            ),
-        )
-        .launch(App);
-}
-
-#[derive(PartialEq, Eq)]
-pub enum InteractiveState {
-    Nothing,
-    AddFriendModal,
-    WhisperFriendModal(Friend),
-    RemoveFriendModal(Friend),
-    BlockFriendModal(Friend),
-    UnblockFriendModal(Friend),
-    AcceptFriendRequestModal(Friend),
-    RejectFriendRequestModal(Friend),
-    FriendContextMenu(String),
-}
-
-pub struct ReceivedHello(pub bool);
-
-pub struct ReceivedLoggedIn(pub bool);
-
-pub struct FriendsList(pub HashMap<FriendStatus, Vec<Friend>>);
-
-pub struct ChatMessages(pub Vec<ChatMessage>);
-
-#[derive(Clone, PartialEq)]
-pub struct Notification {
-    pub message: String,
-    pub timestamp: Instant,
-    pub notification_type: NotificationType,
-}
-
-#[derive(Clone, PartialEq)]
-pub enum NotificationType {
-    Generic,
-    FriendRequestReceived,
-    FriendAccepted,
-}
-
-pub struct Notifications(pub Vec<Notification>);
+const TAILWIND_CSS: Asset = asset!("/assets/tailwind.css");
 
 #[component]
-pub fn App() -> Element {
+pub fn app() -> Element {
     let wh = consume_context::<Arc<Mutex<WarhorseClient>>>();
+    let wh_cloned = wh.clone();
 
     let mut notifications = use_signal(|| Notifications(Vec::new()));
 
@@ -168,13 +98,23 @@ pub fn App() -> Element {
         }
     });
 
+    // TEMP:
+    // Automatically login
+    use_effect(move || {
+        wh_cloned
+            .lock()
+            .unwrap()
+            .send_user_login_request("test".into(), "password".into());
+    });
+
     rsx! {
         document::Link { rel: "icon", href: FAVICON }
         document::Link { rel: "stylesheet", href: MAIN_CSS }
+        document::Link { rel: "stylesheet", href: TAILWIND_CSS }
         if !received_logged_in.read().0 {
             wh_login {}
         } else {
-            wh_main {}
+            wh_logged_in {}
         }
     }
 }
@@ -241,8 +181,11 @@ fn wh_login() -> Element {
 
     rsx! {
         if received_hello.read().0 {
-            section { class: "login",
-                h2 { "Login" }
+            header { class: "container mx-auto px-4",
+                h1 { "Warhorse" }
+            }
+            section { class: "login-section",
+                h2 { class: "login-title", "LOGIN" }
                 form {
                     class: "login-form",
                     onsubmit: move |e| {
@@ -258,22 +201,30 @@ fn wh_login() -> Element {
                             error!("Failed to send login request: {:?}", e);
                         }
                     },
-                    input {
-                        r#type: "text",
-                        name: "username",
-                        placeholder: "Username",
+                    div {
+                        input {
+                            class: "login-input",
+                            r#type: "text",
+                            name: "username",
+                            placeholder: "Account or Email",
+                        }
                     }
-                    input {
-                        r#type: "password",
-                        name: "password",
-                        placeholder: "Password",
+                    div {
+                        input {
+                            class: "login-input",
+                            r#type: "password",
+                            name: "password",
+                            placeholder: "Password",
+                        }
                     }
-
-                    button { r#type: "submit", "Login" }
+                    button { class: "login-button", r#type: "submit", "EXECUTE LOGIN" }
                 }
-                h2 { "Register" }
+
+                div { class: "login-divider" }
+
+                h2 { class: "login-title", "REGISTER" }
                 form {
-                    class: "register-form",
+                    class: "login-form",
                     onsubmit: move |e| {
                         e.prevent_default();
                         if let Err(e) = wh_cloned2
@@ -289,82 +240,63 @@ fn wh_login() -> Element {
                             error!("Failed to send registration request: {:?}", e);
                         }
                     },
-                    input {
-                        r#type: "text",
-                        name: "account_name",
-                        placeholder: "Account Name",
+                    div {
+                        input {
+                            class: "login-input",
+                            r#type: "text",
+                            name: "account_name",
+                            placeholder: "Account Name",
+                        }
                     }
-                    input {
-                        r#type: "text",
-                        name: "display_name",
-                        placeholder: "Display Name",
+                    div {
+                        input {
+                            class: "login-input",
+                            r#type: "text",
+                            name: "display_name",
+                            placeholder: "Display Name",
+                        }
                     }
-                    input { r#type: "text", name: "email", placeholder: "Email" }
-                    input {
-                        r#type: "password",
-                        name: "password",
-                        placeholder: "Password",
+                    div {
+                        input {
+                            class: "login-input",
+                            r#type: "text",
+                            name: "email",
+                            placeholder: "Email",
+                        }
                     }
-                    button { r#type: "submit", "Register" }
+                    div {
+                        input {
+                            class: "login-input",
+                            r#type: "password",
+                            name: "password",
+                            placeholder: "Password",
+                        }
+                    }
+                    button { class: "login-button", r#type: "submit", "INITIALIZE ACCOUNT" }
                 }
             }
         } else {
-            section { class: "login",
-                h2 { "Connecting to Warhorse..." }
+            section { class: "loading-container",
+                div { class: "loading-box",
+                    h2 { class: "loading-text",
+                        span { class: "loading-cursor", ">" }
+                        "ESTABLISHING CONNECTION..."
+                    }
+                }
             }
         }
     }
 }
 
 #[component]
-fn wh_main() -> Element {
-    let wh = use_context::<Arc<Mutex<WarhorseClient>>>();
+fn wh_logged_in() -> Element {
     let interactive_state = use_context::<Signal<InteractiveState>>();
-    let chat_messages = use_context::<Signal<ChatMessages>>();
-
-    let mut message_input = use_signal(|| String::new());
 
     rsx! {
-        header {
-            h1 { "Warhorse" }
-            p { "A social backend for video games" }
+        div { class: "main-container",
+            wh_sidebar {}
+            wh_chat {}
         }
-        wh_sidebar {}
-        section { class: "main",
-            h2 { "#general" }
-            div { class: "chat",
-                for message in chat_messages.read().0.iter() {
-                    wh_chat_message {
-                        display_name: message.display_name.clone(),
-                        time: message.time.to_string(),
-                        message: message.message.clone(),
-                    }
-                }
-            }
-            form {
-                class: "chat-form",
-                onsubmit: move |e| {
-                    e.prevent_default();
-                    let message = message_input.to_string();
-                    if let Err(e) = wh.lock().unwrap().send_room_message("general".into(), message) {
-                        error!("Failed to send room message: {:?}", e);
-                    }
-                    message_input.set(String::new());
-                },
-                input {
-                    r#type: "text",
-                    name: "message",
-                    placeholder: "Type a message...",
-                    value: message_input.read().to_string(),
-                    oninput: move |e| {
-                        message_input
-                            .set(e.values().get("message").unwrap_or(&FormValue(vec![])).as_value());
-                    },
-                }
-                button { r#type: "submit", "Send" }
-            }
-        }
-
         wh_notifications {}
 
         if *interactive_state.read() == InteractiveState::AddFriendModal {
@@ -395,55 +327,131 @@ fn wh_main() -> Element {
 }
 
 #[component]
+fn wh_title_header() -> Element {
+    rsx! {
+        header { class: "title-header",
+            h1 { "Warhorse" }
+        }
+    }
+}
+
+#[component]
 fn wh_sidebar() -> Element {
     let friends_list = use_context::<Signal<FriendsList>>();
     let mut interactive_state = use_context::<Signal<InteractiveState>>();
     rsx! {
         section { class: "sidebar",
+            h2 { "Friends" }
             div { class: "friends-container",
-                h2 { "Friends" }
-                div { class: "friends",
-                    if let Some(friends) = friends_list.read().0.get(&FriendStatus::FriendRequestReceived) {
-                        wh_friend_category {
-                            status: FriendStatus::FriendRequestReceived,
-                            friends: friends.clone(),
-                        }
-                    }
 
-                    if let Some(friends) = friends_list.read().0.get(&FriendStatus::Online) {
-                        wh_friend_category {
-                            status: FriendStatus::Online,
-                            friends: friends.clone(),
+                // add fake friend category
+                wh_friend_category {
+                    status: FriendStatus::Online,
+                    friends: {
+                        let mut friends = Vec::new();
+                        for i in 0..10 {
+                            let friend = Friend {
+                                id: i.to_string(),
+                                display_name: format!("Friend {}", i),
+                                status: FriendStatus::Online,
+                            };
+                            friends.push(friend);
                         }
-                    }
+                        friends
+                    },
+                }
 
-                    if let Some(friends) = friends_list.read().0.get(&FriendStatus::Offline) {
-                        wh_friend_category {
-                            status: FriendStatus::Offline,
-                            friends: friends.clone(),
-                        }
+                if let Some(friends) = friends_list.read().0.get(&FriendStatus::FriendRequestReceived) {
+                    wh_friend_category {
+                        status: FriendStatus::FriendRequestReceived,
+                        friends: friends.clone(),
                     }
+                }
 
-                    if let Some(friends) = friends_list.read().0.get(&FriendStatus::FriendRequestSent) {
-                        wh_friend_category {
-                            status: FriendStatus::FriendRequestSent,
-                            friends: friends.clone(),
-                        }
+                if let Some(friends) = friends_list.read().0.get(&FriendStatus::Online) {
+                    wh_friend_category {
+                        status: FriendStatus::Online,
+                        friends: friends.clone(),
                     }
+                }
 
-                    if let Some(friends) = friends_list.read().0.get(&FriendStatus::Blocked) {
-                        wh_friend_category {
-                            status: FriendStatus::Blocked,
-                            friends: friends.clone(),
+                if let Some(friends) = friends_list.read().0.get(&FriendStatus::Offline) {
+                    wh_friend_category {
+                        status: FriendStatus::Offline,
+                        friends: friends.clone(),
+                    }
+                }
+
+                if let Some(friends) = friends_list.read().0.get(&FriendStatus::FriendRequestSent) {
+                    wh_friend_category {
+                        status: FriendStatus::FriendRequestSent,
+                        friends: friends.clone(),
+                    }
+                }
+
+                if let Some(friends) = friends_list.read().0.get(&FriendStatus::Blocked) {
+                    wh_friend_category {
+                        status: FriendStatus::Blocked,
+                        friends: friends.clone(),
+                    }
+                }
+            }
+            button {
+                class: "add-friend",
+                onclick: move |_| *interactive_state.write() = InteractiveState::AddFriendModal,
+                "Add Friend"
+            }
+        }
+    }
+}
+
+#[component]
+fn wh_chat() -> Element {
+    let wh = use_context::<Arc<Mutex<WarhorseClient>>>();
+    let chat_messages = use_context::<Signal<ChatMessages>>();
+
+    let mut message_input = use_signal(|| String::new());
+
+    rsx! {
+        section { class: "content",
+            h2 { class: "chat-header", "Chat: #general" }
+            div { class: "chat",
+                div { class: "chat-messages",
+                    // dummy message
+                    wh_chat_message {
+                        display_name: "Warhorse".to_string(),
+                        time: "12:00".to_string(),
+                        message: "Welcome to Warhorse!".to_string(),
+                    }
+                    for message in chat_messages.read().0.iter() {
+                        wh_chat_message {
+                            display_name: message.display_name.clone(),
+                            time: message.time.to_string(),
+                            message: message.message.clone(),
                         }
                     }
                 }
-                div { class: "add-friend-container",
-                    button {
-                        class: "secondary add-friend",
-                        onclick: move |_| *interactive_state.write() = InteractiveState::AddFriendModal,
-                        "Add Friend"
+                form {
+                    class: "chat-form",
+                    onsubmit: move |e| {
+                        e.prevent_default();
+                        let message = message_input.to_string();
+                        if let Err(e) = wh.lock().unwrap().send_room_message("general".into(), message) {
+                            error!("Failed to send room message: {:?}", e);
+                        }
+                        message_input.set(String::new());
+                    },
+                    input {
+                        r#type: "text",
+                        name: "message",
+                        placeholder: "Type a message...",
+                        value: message_input.read().to_string(),
+                        oninput: move |e| {
+                            message_input
+                                .set(e.values().get("message").unwrap_or(&FormValue(vec![])).as_value());
+                        },
                     }
+                    button { r#type: "submit", "Send" }
                 }
             }
         }
